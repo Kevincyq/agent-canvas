@@ -1,104 +1,68 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { HandwritingCanvas } from "@/components/canvas/HandwritingCanvas";
-import { createCanvasSummary, type CanvasElement } from "@/lib/canvas/actions";
+import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
+import { createCanvasSummary } from "@/lib/canvas/actions";
+import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import type {
   AgentAction,
   AgentResponse,
   ChatMessage,
-  HandwritingPayload,
   HwrMode,
   HwrOpenResponse,
-  HwrRecognizeResponse,
-  HwrRecognitionMode,
 } from "@/types/agent";
 
 const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "你好，我是 Canvas Agent。你可以让我在对话中打开手写画布，停笔后我会自动结构化识别结果。",
+    "你好，我是 Canvas Agent。你可以让我在对话中打开 FluxInk 原生手写画布，识别结果会回到 AskAI 输入框。",
 };
 
-type CanvasStatus = "idle" | "opening" | "ready" | "recognizing" | "recognized" | "error";
+type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";
 type CanvasDisplayMode = "inline" | "fullscreen";
-
-function inferRecognitionMode(prompt: string, mode: HwrMode): HwrRecognitionMode {
-  const normalized = prompt.toLowerCase();
-
-  if (
-    mode === "structure" ||
-    normalized.includes("分子") ||
-    normalized.includes("结构式") ||
-    normalized.includes("molecule") ||
-    normalized.includes("smiles")
-  ) {
-    return "structure";
-  }
-
-  if (
-    normalized.includes("数学") ||
-    normalized.includes("公式") ||
-    normalized.includes("方程") ||
-    normalized.includes("math") ||
-    normalized.includes("equation")
-  ) {
-    return "math";
-  }
-
-  if (
-    normalized.includes("化学") ||
-    normalized.includes("chemical") ||
-    normalized.includes("chemistry")
-  ) {
-    return "chemical";
-  }
-
-  return "text";
-}
+type WidgetStatus = "loading" | "ready" | "recognized" | "error";
 
 export function CanvasAgentApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage]);
-  const [elements, setElements] = useState<CanvasElement[]>([]);
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasAfterMessageId, setCanvasAfterMessageId] = useState<string | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
+  const [widgetStatus, setWidgetStatus] = useState<WidgetStatus>("loading");
   const [canvasDisplayMode, setCanvasDisplayMode] = useState<CanvasDisplayMode>("inline");
   const [hwrMode, setHwrMode] = useState<HwrMode>("general");
   const [hwrLanguage, setHwrLanguage] = useState("");
   const [hwrPrompt, setHwrPrompt] = useState("");
-  const [hwrMessage, setHwrMessage] = useState<string | null>(null);
+  const [hwrOpenResult, setHwrOpenResult] = useState<HwrOpenResponse | null>(null);
   const [recognitionText, setRecognitionText] = useState("");
   const [recognitionError, setRecognitionError] = useState<string | null>(null);
   const [composerDraft, setComposerDraft] = useState("");
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
-  const recognitionRequestIdRef = useRef(0);
 
   const canvasSummary = useMemo(
-    () => createCanvasSummary(canvasOpen, elements, selectedElementId),
-    [canvasOpen, elements, selectedElementId],
+    () =>
+      createCanvasSummary(
+        canvasOpen,
+        [],
+        null,
+      ),
+    [canvasOpen],
   );
 
   async function openHandwritingCanvas(action: Extract<AgentAction, { type: "open_handwriting_canvas" }>) {
     setCanvasOpen(true);
     setCanvasStatus("opening");
+    setWidgetStatus("loading");
     setCanvasDisplayMode("inline");
     setHwrMode(action.mode);
     setHwrLanguage(action.language);
     setHwrPrompt(action.prompt);
-    setHwrMessage("正在连接 FluxInk MCP");
+    setHwrOpenResult(null);
     setRecognitionText("");
     setRecognitionError(null);
-
-    if (action.force_new) {
-      setElements([]);
-      setSelectedElementId(null);
-    }
 
     const response = await fetch("/api/mcp/hwr/open", {
       method: "POST",
@@ -113,8 +77,9 @@ export function CanvasAgentApp() {
       throw new Error(payload.error || "手写画布初始化失败");
     }
 
-    setHwrMessage(payload.message || "Draw on the canvas below");
+    setHwrOpenResult(payload);
     setCanvasStatus("ready");
+    setWidgetStatus("loading");
   }
 
   async function applyActions(actions: AgentAction[]) {
@@ -187,49 +152,29 @@ export function CanvasAgentApp() {
     }
   }
 
-  const handleRecognizeHandwriting = useCallback(
-    async function handleRecognizeHandwriting(payload: HandwritingPayload) {
-      const requestId = recognitionRequestIdRef.current + 1;
-      recognitionRequestIdRef.current = requestId;
-      setCanvasStatus("recognizing");
-      setRecognitionError(null);
+  function handleWidgetRecognitionChange(payload: {
+    text: string;
+    status: WidgetStatus;
+    error?: string | null;
+  }) {
+    setWidgetStatus(payload.status);
+    setRecognitionText(payload.text);
+    setRecognitionError(payload.error ?? null);
 
-      try {
-        const response = await fetch("/api/mcp/hwr/recognize", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            strokes: payload,
-            mode: hwrMode,
-            recognitionMode: inferRecognitionMode(hwrPrompt, hwrMode),
-            language: hwrLanguage,
-          }),
-        });
-        const result = (await response.json()) as HwrRecognizeResponse;
+    if (payload.status === "recognized") {
+      setCanvasStatus("recognized");
+      return;
+    }
 
-        if (requestId !== recognitionRequestIdRef.current) {
-          return;
-        }
+    if (payload.status === "error") {
+      setCanvasStatus("error");
+      return;
+    }
 
-        if (!response.ok || !result.ok || !result.text) {
-          throw new Error(result.error || "手写识别失败");
-        }
-
-        setRecognitionText(result.text);
-        setCanvasStatus("recognized");
-      } catch (error) {
-        if (requestId !== recognitionRequestIdRef.current) {
-          return;
-        }
-
-        setCanvasStatus("error");
-        setRecognitionError(error instanceof Error ? error.message : "手写识别失败");
-      }
-    },
-    [hwrLanguage, hwrMode, hwrPrompt],
-  );
+    if (payload.status === "ready") {
+      setCanvasStatus("ready");
+    }
+  }
 
   function handleSendRecognitionToAskAIInput() {
     setCanvasDisplayMode("inline");
@@ -257,21 +202,19 @@ export function CanvasAgentApp() {
   }
 
   const canvasSlot = canvasOpen ? (
-    <HandwritingCanvas
+    <FluxInkWidgetHost
       displayMode={canvasDisplayMode}
-      elements={elements}
       mode={hwrMode}
-      mcpMessage={hwrMessage}
+      language={hwrLanguage}
+      prompt={hwrPrompt}
+      uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
+      openResult={hwrOpenResult}
       recognitionError={recognitionError}
-      recognitionStatus={canvasStatus}
+      recognitionStatus={widgetStatus}
       recognitionText={recognitionText}
-      selectedElementId={selectedElementId}
-      recognitionBusy={canvasStatus === "recognizing" || canvasStatus === "opening"}
       onDisplayModeChange={setCanvasDisplayMode}
-      onElementsChange={setElements}
-      onRecognizeHandwriting={handleRecognizeHandwriting}
+      onRecognitionChange={handleWidgetRecognitionChange}
       onSendToAskAIInput={handleSendRecognitionToAskAIInput}
-      onSelectedElementChange={setSelectedElementId}
     />
   ) : null;
 

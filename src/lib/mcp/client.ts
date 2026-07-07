@@ -1,6 +1,8 @@
 import { MCPServerStreamableHttp } from "@openai/agents";
 
 import { getNumberEnv, getOptionalEnv } from "@/lib/env";
+import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI, HWR_TOOL_ALIASES } from "@/lib/mcp/constants";
+import { extractRecognitionText } from "@/lib/mcp/recognition";
 import type {
   HwrOpenRequest,
   HwrOpenResponse,
@@ -27,6 +29,8 @@ type ConnectableMcpServer = {
   close: () => Promise<void>;
   listTools?: () => Promise<McpTool[]>;
   listResources?: () => Promise<McpResource[] | { resources: McpResource[] }>;
+  listResourceTemplates?: () => Promise<{ resourceTemplates: McpResource[] } | McpResource[]>;
+  readResource?: (uri: string) => Promise<{ contents: Array<{ uri?: string; mimeType?: string; text?: string; blob?: string }> }>;
   callTool?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 };
 
@@ -57,16 +61,18 @@ export type McpToolCallResult = {
 const DEFAULT_MCP_URL =
   "https://mcp.fluxink.ai/servers/d706699b03524ba6aa84423954c43f3f/mcp";
 
-const HWR_TOOL_ALIASES = {
-  showHandwritingCanvas: [
-    "show_handwriting_canvas",
-    "fluxink-mcp-show-handwriting-canvas",
-  ],
-  recognizeHandwriting: [
-    "recognize_handwriting",
-    "fluxink-mcp-recognize-handwriting",
-  ],
-} as const;
+async function withMcpServer<T>(operation: (server: ConnectableMcpServer) => Promise<T>): Promise<T> {
+  const server = createStreamableHttpMcpServer();
+
+  try {
+    await server.connect();
+    return await operation(server);
+  } finally {
+    await server.close().catch(() => undefined);
+  }
+}
+
+export { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI };
 
 function createRequestInit(): RequestInit {
   const token = getOptionalEnv("MCP_AUTH_TOKEN");
@@ -173,6 +179,86 @@ export async function inspectMcpServer(): Promise<McpInspectionResult[]> {
   }
 
   return [streamableResult, await inspectServer(sseServer, "sse")];
+}
+
+export async function listMcpTools(): Promise<McpTool[]> {
+  return withMcpServer(async (server) => server.listTools?.() ?? []);
+}
+
+export async function listMcpResources(): Promise<McpResource[]> {
+  return withMcpServer(async (server) => {
+    const resourceResult = await server.listResources?.();
+
+    if (!resourceResult) {
+      return [];
+    }
+
+    return Array.isArray(resourceResult) ? resourceResult : resourceResult.resources;
+  });
+}
+
+export type McpUiResourcePayload = {
+  uri: string;
+  mimeType?: string;
+  html: string;
+};
+
+export async function readMcpUiResource(uri: string): Promise<{ contents: McpUiResourcePayload[] }> {
+  return withMcpServer(async (server) => {
+    if (!server.readResource) {
+      throw new Error("The connected MCP server does not expose readResource.");
+    }
+
+    const response = await server.readResource(uri);
+    const contents = response.contents
+      .map((item) => {
+        if (typeof item.text === "string" && item.text.length > 0) {
+          return {
+            uri: item.uri ?? uri,
+            mimeType: item.mimeType,
+            html: item.text,
+          };
+        }
+
+        return null;
+      })
+      .filter((item): item is McpUiResourcePayload => item !== null);
+
+    if (contents.length === 0) {
+      throw new Error(`MCP UI resource did not include HTML content: ${uri}`);
+    }
+
+    return { contents };
+  });
+}
+
+function matchesToolAlias(toolName: string, aliases: readonly string[]): boolean {
+  const normalized = toolName.replaceAll("_", "-");
+
+  return aliases.some((alias) => alias.replaceAll("_", "-") === normalized);
+}
+
+export async function callAllowedMcpTool(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const isShowTool = matchesToolAlias(toolName, HWR_TOOL_ALIASES.showHandwritingCanvas);
+  const isRecognizeTool = matchesToolAlias(toolName, HWR_TOOL_ALIASES.recognizeHandwriting);
+
+  if (!isShowTool && !isRecognizeTool) {
+    throw new Error(`Tool is not allowed: ${toolName}`);
+  }
+
+  const aliases = isShowTool
+    ? HWR_TOOL_ALIASES.showHandwritingCanvas
+    : HWR_TOOL_ALIASES.recognizeHandwriting;
+  const result = await callResolvedMcpTool(aliases, args);
+
+  if (!result.ok) {
+    throw new Error(result.error || `MCP tool call failed: ${toolName}`);
+  }
+
+  return normalizeMcpResult(result.result);
 }
 
 export async function callMcpTool(
@@ -305,10 +391,6 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function firstNonEmptyString(...values: unknown[]): string | undefined {
-  return values.find((value): value is string => typeof value === "string" && value.length > 0);
-}
-
 export async function openHandwritingCanvas(
   input: HwrOpenRequest,
 ): Promise<HwrOpenResponse> {
@@ -370,14 +452,7 @@ export async function recognizeHandwriting(
   }
 
   const payload = asRecord(result.result);
-  const nestedResult = asRecord(payload.result);
-  const text = firstNonEmptyString(
-    nestedResult.text,
-    payload.text,
-    payload.latex,
-    payload.smiles,
-    result.result,
-  );
+  const text = extractRecognitionText(result.result);
 
   return {
     ok: Boolean(text),

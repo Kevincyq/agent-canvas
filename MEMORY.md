@@ -34,9 +34,12 @@
 - Kevin pointed out UI cleanup issues: do not show duplicate canvas send controls, do not expose the internal action/debug strip such as "reply", and make AskAI composer Enter send while Shift+Enter inserts a newline.
 - Current implementation boundary: the visible handwriting surface is a local React/native canvas, while structured recognition is submitted to FluxInk MCP `recognize_handwriting`. It is not a full visual embedding of FluxInk's MCP App widget, so it will not perfectly match Claude's widget UI or preprocessing behavior.
 - `/api/agent` must not remain only an intent router. When `OPENAI_API_KEY` is configured, non-canvas user prompts, including prompts containing HWR structured output, should be answered by the cloud AskAI model. Without the key, fallback should say cloud AskAI is unavailable instead of pretending to answer.
+- Kevin chose to keep the native canvas implementation on `main` and develop the FluxInk MCP App widget host on branch `feature/mcp-app-widget-host`.
+- Widget branch architecture: browser MCP Apps Host (`FluxInkWidgetHost`) renders `ui://fluxink/fluxink-hwr-canvas.html` in a sandboxed iframe; `/api/mcp/host` proxies allowlisted MCP JSON-RPC (`tools/call`, `resources/read`, `resources/list`, `tools/list`) to FluxInk via server BFF; `/api/mcp/ui-resource` fetches widget HTML for initial mount.
+- `HandwritingCanvas.tsx` remains in the repo for the native-canvas path on `main`; widget branch swaps `CanvasAgentApp` to `FluxInkWidgetHost` instead of deleting the native canvas component.
 
 ## Open Questions
 
 - Production Portal origin and deployment target are not confirmed.
 - Whether `openai-agents-js/` is intended as a vendored source dependency, a reference checkout, or both is not yet confirmed.
-- Whether the MVP should eventually embed FluxInk's MCP App widgets directly, or keep the local native canvas as the primary Portal UI and use MCP only behind the server, is not yet confirmed.
+- Whether the MVP should eventually embed FluxInk's MCP App widgets directly, or keep the local native canvas as the primary Portal UI and use MCP only behind the server, is not yet confirmed. Active PoC work on `feature/mcp-app-widget-host` pursues the widget host path while `main` keeps the native canvas baseline.

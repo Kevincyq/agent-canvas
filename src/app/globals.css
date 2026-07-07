@@ -282,6 +282,22 @@ a {
   width: 100%;
 }
 
+.widget-shell {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  flex: 1;
+  min-height: 320px;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.fluxink-widget-frame {
+  background: #fff;
+  border-radius: 12px;
+  display: block;
+}
+
 .canvas-meta {
   border-top: 1px solid var(--border);
   color: var(--muted);
