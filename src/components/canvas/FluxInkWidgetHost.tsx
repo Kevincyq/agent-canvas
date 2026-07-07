@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import { proxyMcpHostRequest } from "@/lib/mcp/host-proxy";
 import { extractRecognitionText } from "@/lib/mcp/recognition";
+import { extractTextFromContentBlocks } from "@/lib/mcp/widget-content";
 import type { HwrMode, HwrOpenResponse } from "@/types/agent";
 
 type WidgetStatus = "loading" | "ready" | "recognized" | "error";
@@ -16,31 +17,43 @@ type FluxInkWidgetHostProps = {
   prompt: string;
   uiResourceUri?: string;
   openResult: HwrOpenResponse | null;
-  recognitionText: string;
   recognitionError: string | null;
-  recognitionStatus: WidgetStatus;
   onDisplayModeChange: (mode: "inline" | "fullscreen") => void;
   onRecognitionChange: (payload: {
     text: string;
     status: WidgetStatus;
     error?: string | null;
   }) => void;
-  onSendToAskAIInput: () => void;
+  onSendResultToComposer: (text: string) => void;
 };
 
 type AppBridgeInstance = {
   connect: (transport: unknown) => Promise<void>;
   sendToolInput: (payload: { arguments: Record<string, unknown> }) => void;
-  sendToolResult?: (payload: { result: unknown }) => void;
-  teardownResource?: () => Promise<void> | void;
-  oninitialized?: () => void;
+  sendToolResult?: (payload: unknown) => void;
+  setHostContext?: (context: Record<string, unknown>) => void;
+  teardownResource?: (params?: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  addEventListener?: (event: string, handler: (params: unknown) => void) => void;
+  removeEventListener?: (event: string, handler: (params: unknown) => void) => void;
   oncalltool?: (
-    request: { params: { name: string; arguments?: Record<string, unknown> } },
+    params: { name: string; arguments?: Record<string, unknown> },
     extra: unknown,
   ) => Promise<unknown>;
-  onreadresource?: (request: { params: { uri: string } }, extra: unknown) => Promise<unknown>;
+  onreadresource?: (params: { uri: string }, extra: unknown) => Promise<unknown>;
   onlistresources?: (request: Record<string, unknown>, extra: unknown) => Promise<unknown>;
   onlisttools?: (request: Record<string, unknown>, extra: unknown) => Promise<unknown>;
+  onrequestdisplaymode?: (
+    params: { mode: "inline" | "fullscreen" | "pip" },
+    extra: unknown,
+  ) => Promise<{ mode: "inline" | "fullscreen" | "pip" }>;
+  onmessage?: (
+    params: { role: string; content: unknown[] },
+    extra: unknown,
+  ) => Promise<Record<string, unknown>>;
+  onupdatemodelcontext?: (
+    params: { content?: unknown[]; structuredContent?: Record<string, unknown> },
+    extra: unknown,
+  ) => Promise<Record<string, unknown>>;
 };
 
 function createJsonRpcRequest(method: string, params?: Record<string, unknown>) {
@@ -52,6 +65,55 @@ function createJsonRpcRequest(method: string, params?: Record<string, unknown>) 
   };
 }
 
+function asCallToolResult(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+
+    if (Array.isArray(record.content)) {
+      return record;
+    }
+
+    if (record.structuredContent && typeof record.structuredContent === "object") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(record.structuredContent),
+          },
+        ],
+        structuredContent: record.structuredContent,
+      };
+    }
+  }
+
+  const structuredContent =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : { text: String(value ?? "") };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(structuredContent),
+      },
+    ],
+    structuredContent,
+  };
+}
+
+function resolveWidgetHeight(displayMode: "inline" | "fullscreen", reportedHeight?: number): number {
+  if (displayMode === "fullscreen") {
+    return Math.max(480, window.innerHeight - 120);
+  }
+
+  if (typeof reportedHeight === "number" && reportedHeight > 0) {
+    return Math.max(480, Math.min(reportedHeight, 920));
+  }
+
+  return 640;
+}
+
 async function loadWidgetModules() {
   const [appBridgeModule, extAppsModule] = await Promise.all([
     import("@modelcontextprotocol/ext-apps/app-bridge"),
@@ -59,20 +121,33 @@ async function loadWidgetModules() {
   ]);
 
   return {
-    AppBridge: appBridgeModule.AppBridge as new (
+    AppBridge: appBridgeModule.AppBridge as unknown as new (
       client: null,
       hostInfo: { name: string; version: string },
-      capabilities: {
-        openLinks: Record<string, unknown>;
-        serverTools: Record<string, unknown>;
-        logging: Record<string, unknown>;
-      },
+      capabilities: Record<string, unknown>,
+      options?: { hostContext?: Record<string, unknown> },
     ) => AppBridgeInstance,
     PostMessageTransport: extAppsModule.PostMessageTransport as new (
       target: Window,
       source: Window,
     ) => unknown,
   };
+}
+
+function applyHostContext(
+  bridge: AppBridgeInstance,
+  nextDisplayMode: "inline" | "fullscreen",
+) {
+  bridge.setHostContext?.({
+    displayMode: nextDisplayMode,
+    availableDisplayModes: ["inline", "fullscreen"],
+    theme: "light",
+    platform: "web",
+    containerDimensions: {
+      maxHeight: resolveWidgetHeight(nextDisplayMode),
+      maxWidth: nextDisplayMode === "fullscreen" ? window.innerWidth : undefined,
+    },
+  });
 }
 
 export function FluxInkWidgetHost({
@@ -82,89 +157,176 @@ export function FluxInkWidgetHost({
   prompt,
   uiResourceUri = DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI,
   openResult,
-  recognitionText,
   recognitionError,
-  recognitionStatus,
   onDisplayModeChange,
   onRecognitionChange,
-  onSendToAskAIInput,
+  onSendResultToComposer,
 }: FluxInkWidgetHostProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bridgeRef = useRef<AppBridgeInstance | null>(null);
-  const [hostMessage, setHostMessage] = useState("正在加载 FluxInk MCP App widget");
-  const [widgetHeight, setWidgetHeight] = useState(420);
+  const bridgeInitializedRef = useRef(false);
+  const displayModeRef = useRef(displayMode);
+  const mountGenerationRef = useRef(0);
+  const propsRef = useRef({
+    mode,
+    language,
+    prompt,
+    openResult,
+    onDisplayModeChange,
+    onRecognitionChange,
+    onSendResultToComposer,
+  });
+  const [widgetHeight, setWidgetHeight] = useState(640);
+
+  displayModeRef.current = displayMode;
+  propsRef.current = {
+    mode,
+    language,
+    prompt,
+    openResult,
+    onDisplayModeChange,
+    onRecognitionChange,
+    onSendResultToComposer,
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    const iframe = iframeRef.current;
-
-    if (!iframe || !openResult?.ok) {
+    if (!openResult?.ok) {
       return undefined;
     }
 
+    const mountGeneration = mountGenerationRef.current + 1;
+    mountGenerationRef.current = mountGeneration;
+    let cancelled = false;
+
+    const handleSizeChange = (params: unknown) => {
+      const height = (params as { height?: number } | undefined)?.height;
+      setWidgetHeight(resolveWidgetHeight(displayModeRef.current, height));
+    };
+
+    const deliverRecognizedText = (text: string) => {
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        return;
+      }
+
+      propsRef.current.onRecognitionChange({
+        text: trimmed,
+        status: "recognized",
+        error: null,
+      });
+    };
+
+    const handleHostMessage = (content: unknown[]) => {
+      if (!bridgeInitializedRef.current) {
+        return { isError: true };
+      }
+
+      const text = extractTextFromContentBlocks(content);
+      deliverRecognizedText(text);
+      propsRef.current.onSendResultToComposer(text);
+      return {};
+    };
+
     async function mountWidget() {
+      const iframe = iframeRef.current;
+
+      if (!iframe) {
+        return;
+      }
+
       try {
-        setHostMessage("正在读取 FluxInk UI resource");
-
-        const resourceResponse = await fetch(
-          `/api/mcp/ui-resource?uri=${encodeURIComponent(uiResourceUri)}`,
-        );
-        const resourcePayload = (await resourceResponse.json()) as {
-          ok: boolean;
-          html?: string;
-          error?: string;
-        };
-
-        if (!resourceResponse.ok || !resourcePayload.ok || !resourcePayload.html) {
-          throw new Error(resourcePayload.error || "无法读取 FluxInk UI resource");
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          iframe.onload = () => resolve();
-          iframe.onerror = () => reject(new Error("FluxInk widget iframe 加载失败"));
-          iframe.srcdoc = resourcePayload.html ?? "";
-        });
-
-        if (cancelled) {
-          return;
-        }
-
         const { AppBridge, PostMessageTransport } = await loadWidgetModules();
+
+        if (cancelled || mountGeneration !== mountGenerationRef.current) {
+          return;
+        }
+
+        const initialDisplayMode = displayModeRef.current;
         const bridge = new AppBridge(
           null,
           { name: "Agent Canvas MCP Host", version: "0.1.0" },
-          { openLinks: {}, serverTools: {}, logging: {} },
+          {
+            openLinks: {},
+            serverTools: { listChanged: true },
+            serverResources: { listChanged: true },
+            logging: {},
+            message: {
+              text: {},
+            },
+            updateModelContext: {
+              text: {},
+              structuredContent: {},
+            },
+          },
+          {
+            hostContext: {
+              displayMode: initialDisplayMode,
+              availableDisplayModes: ["inline", "fullscreen"],
+              theme: "light",
+              platform: "web",
+              containerDimensions: {
+                maxHeight: resolveWidgetHeight(initialDisplayMode),
+              },
+            },
+          },
         );
 
-        bridge.oncalltool = async (request) => {
-          const response = await proxyMcpHostRequest(
-            createJsonRpcRequest("tools/call", request.params),
-          );
-
-          if (response.error) {
-            throw new Error(response.error.message);
-          }
-
-          const text = extractRecognitionText(response.result);
-
-          if (text) {
-            onRecognitionChange({
-              text,
-              status: "recognized",
-              error: null,
-            });
-          }
-
-          return response.result;
+        bridge.onrequestdisplaymode = async ({ mode: requestedMode }) => {
+          const nextMode = requestedMode === "fullscreen" ? "fullscreen" : "inline";
+          propsRef.current.onDisplayModeChange(nextMode);
+          setWidgetHeight(resolveWidgetHeight(nextMode));
+          applyHostContext(bridge, nextMode);
+          return { mode: nextMode };
         };
 
-        bridge.onreadresource = async (request) => {
+        bridge.onmessage = async ({ content }) => handleHostMessage(content);
+
+        bridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
+          if (!bridgeInitializedRef.current) {
+            return {};
+          }
+
+          const text =
+            extractTextFromContentBlocks(content) ||
+            extractRecognitionText(structuredContent) ||
+            "";
+
+          deliverRecognizedText(text);
+          propsRef.current.onSendResultToComposer(text);
+          return {};
+        };
+
+        bridge.oncalltool = async (params) => {
+          try {
+            const response = await proxyMcpHostRequest(
+              createJsonRpcRequest("tools/call", params),
+            );
+
+            if (response.error) {
+              throw new Error(response.error.message);
+            }
+
+            const toolResult = asCallToolResult(response.result);
+            deliverRecognizedText(
+              extractRecognitionText(toolResult.structuredContent ?? response.result) ?? "",
+            );
+
+            return toolResult;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "FluxInk 识别失败";
+            propsRef.current.onRecognitionChange({
+              text: "",
+              status: "error",
+              error: message,
+            });
+            throw error;
+          }
+        };
+
+        bridge.onreadresource = async (params) => {
           const response = await proxyMcpHostRequest(
-            createJsonRpcRequest("resources/read", request.params),
+            createJsonRpcRequest("resources/read", params),
           );
 
           if (response.error) {
@@ -194,27 +356,58 @@ export function FluxInkWidgetHost({
           return response.result;
         };
 
-        bridge.oninitialized = () => {
+        bridge.addEventListener?.("initialized", () => {
+          bridgeInitializedRef.current = true;
+
+          const currentOpenResult = propsRef.current.openResult;
+          const currentMode = propsRef.current.mode;
+          const currentLanguage = propsRef.current.language;
+          const currentPrompt = propsRef.current.prompt;
+
           bridge.sendToolInput({
             arguments: {
-              mode: openResult.mode ?? mode,
-              language: openResult.language ?? language,
-              prompt: openResult.prompt ?? prompt,
+              mode: currentOpenResult?.mode ?? currentMode,
+              language: currentOpenResult?.language ?? currentLanguage,
+              prompt: currentOpenResult?.prompt ?? currentPrompt,
               force_new: true,
+              apiBaseUrl: currentOpenResult?.apiBaseUrl,
             },
           });
 
-          if (openResult) {
-            bridge.sendToolResult?.({ result: openResult });
+          if (currentOpenResult) {
+            bridge.sendToolResult?.({
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    type: "hwr_init",
+                    mode: currentOpenResult.mode ?? currentMode,
+                    language: currentOpenResult.language ?? currentLanguage,
+                    prompt: currentOpenResult.prompt ?? currentPrompt,
+                    apiBaseUrl: currentOpenResult.apiBaseUrl,
+                    message: currentOpenResult.message,
+                  }),
+                },
+              ],
+              structuredContent: {
+                type: "hwr_init",
+                mode: currentOpenResult.mode ?? currentMode,
+                language: currentOpenResult.language ?? currentLanguage,
+                prompt: currentOpenResult.prompt ?? currentPrompt,
+                apiBaseUrl: currentOpenResult.apiBaseUrl,
+                message: currentOpenResult.message,
+              },
+            });
           }
 
-          setHostMessage(openResult.message || "FluxInk handwriting widget ready");
-          onRecognitionChange({
-            text: recognitionText,
+          propsRef.current.onRecognitionChange({
+            text: "",
             status: "ready",
             error: null,
           });
-        };
+        });
+
+        bridge.addEventListener?.("sizechange", handleSizeChange);
 
         const transport = new PostMessageTransport(
           iframe.contentWindow as Window,
@@ -222,13 +415,42 @@ export function FluxInkWidgetHost({
         );
 
         await bridge.connect(transport);
-        bridgeRef.current = bridge;
-      } catch (error) {
-        if (cancelled) {
+
+        if (cancelled || mountGeneration !== mountGenerationRef.current) {
+          void bridge.teardownResource?.({});
           return;
         }
 
-        onRecognitionChange({
+        bridgeRef.current = bridge;
+
+        const resourceResponse = await fetch(
+          `/api/mcp/ui-resource?uri=${encodeURIComponent(uiResourceUri)}`,
+        );
+        const resourcePayload = (await resourceResponse.json()) as {
+          ok: boolean;
+          html?: string;
+          error?: string;
+        };
+
+        if (!resourceResponse.ok || !resourcePayload.ok || !resourcePayload.html) {
+          throw new Error(resourcePayload.error || "无法读取 FluxInk UI resource");
+        }
+
+        if (cancelled || mountGeneration !== mountGenerationRef.current) {
+          return;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          iframe.onload = () => resolve();
+          iframe.onerror = () => reject(new Error("FluxInk widget iframe 加载失败"));
+          iframe.srcdoc = resourcePayload.html ?? "";
+        });
+      } catch (error) {
+        if (cancelled || mountGeneration !== mountGenerationRef.current) {
+          return;
+        }
+
+        propsRef.current.onRecognitionChange({
           text: "",
           status: "error",
           error: error instanceof Error ? error.message : "FluxInk widget 初始化失败",
@@ -240,131 +462,53 @@ export function FluxInkWidgetHost({
 
     return () => {
       cancelled = true;
-      void bridgeRef.current?.teardownResource?.();
+      bridgeInitializedRef.current = false;
+
+      const iframe = iframeRef.current;
+
+      if (iframe) {
+        iframe.onload = null;
+        iframe.onerror = null;
+        iframe.srcdoc = "";
+      }
+
+      const bridge = bridgeRef.current;
+      bridge?.removeEventListener?.("sizechange", handleSizeChange);
+      void bridge?.teardownResource?.({});
       bridgeRef.current = null;
     };
-  }, [
-    language,
-    mode,
-    onRecognitionChange,
-    openResult,
-    prompt,
-    uiResourceUri,
-  ]);
+  }, [openResult, uiResourceUri]);
 
   useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.source !== iframeRef.current?.contentWindow) {
-        return;
-      }
+    const bridge = bridgeRef.current;
 
-      const data = event.data;
-
-      if (!data || typeof data !== "object") {
-        return;
-      }
-
-      const method =
-        typeof (data as { method?: unknown }).method === "string"
-          ? (data as { method: string }).method
-          : null;
-
-      if (method === "ui/notifications/size-changed") {
-        const height = (data as { params?: { height?: number } }).params?.height;
-
-        if (typeof height === "number" && height > 0) {
-          setWidgetHeight(Math.max(320, Math.min(height, 960)));
-        }
-      }
-    }
-
-    window.addEventListener("message", handleMessage);
-
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  async function copyRecognitionText() {
-    if (!recognitionText) {
+    if (!bridge) {
       return;
     }
 
-    await navigator.clipboard.writeText(recognitionText);
-  }
+    setWidgetHeight(resolveWidgetHeight(displayMode));
+    applyHostContext(bridge, displayMode);
+  }, [displayMode]);
 
   return (
     <section
-      className={displayMode === "fullscreen" ? "canvas-panel canvas-fullscreen" : "canvas-panel canvas-inline"}
+      className={displayMode === "fullscreen" ? "canvas-panel canvas-fullscreen widget-host" : "canvas-panel canvas-inline widget-host"}
       aria-label="FluxInk MCP App widget"
     >
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">FluxInk MCP App</p>
-          <h2>原生手写画布</h2>
-          <p className="canvas-subtitle">
-            {mode === "structure" ? "结构识别模式" : "通用识别模式"}
-            {hostMessage ? ` · ${hostMessage}` : ""}
-          </p>
+      {recognitionError ? (
+        <div className="widget-host-error" role="alert">
+          {recognitionError}
         </div>
-        <div className="canvas-actions">
-          <button
-            type="button"
-            onClick={() =>
-              onDisplayModeChange(displayMode === "fullscreen" ? "inline" : "fullscreen")
-            }
-          >
-            {displayMode === "fullscreen" ? "回到对话" : "全屏"}
-          </button>
-        </div>
-      </div>
+      ) : null}
 
       <div className="widget-shell" style={{ minHeight: widgetHeight }}>
         <iframe
           ref={iframeRef}
           title="FluxInk handwriting widget"
           className="fluxink-widget-frame"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
           style={{ width: "100%", height: widgetHeight, border: 0 }}
         />
-      </div>
-
-      <div className="canvas-meta">
-        <span>Widget: {uiResourceUri}</span>
-        <span>
-          {recognitionStatus === "loading"
-            ? "Widget 加载中"
-            : recognitionStatus === "ready"
-              ? "可在原生画布中书写"
-              : recognitionStatus === "recognized"
-                ? "已结构化"
-                : "Widget 异常"}
-        </span>
-      </div>
-
-      <div className="structured-preview" aria-label="结构化识别结果">
-        <div className="structured-preview-header">
-          <div>
-            <p className="eyebrow">Structured Result</p>
-            <h3>结构化结果</h3>
-          </div>
-          <div className="structured-preview-actions">
-            <button type="button" onClick={copyRecognitionText} disabled={!recognitionText}>
-              Copy
-            </button>
-            <button
-              type="button"
-              className="primary-action"
-              onClick={onSendToAskAIInput}
-              disabled={!recognitionText || recognitionStatus === "loading"}
-            >
-              Send to AskAI
-            </button>
-          </div>
-        </div>
-        <pre>
-          {recognitionError
-            ? recognitionError
-            : recognitionText || "在 FluxInk 原生画布中书写后，识别结果会显示在这里。"}
-        </pre>
       </div>
     </section>
   );

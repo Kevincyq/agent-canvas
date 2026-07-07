@@ -36,7 +36,16 @@
 - `/api/agent` must not remain only an intent router. When `OPENAI_API_KEY` is configured, non-canvas user prompts, including prompts containing HWR structured output, should be answered by the cloud AskAI model. Without the key, fallback should say cloud AskAI is unavailable instead of pretending to answer.
 - Kevin chose to keep the native canvas implementation on `main` and develop the FluxInk MCP App widget host on branch `feature/mcp-app-widget-host`.
 - Widget branch architecture: browser MCP Apps Host (`FluxInkWidgetHost`) renders `ui://fluxink/fluxink-hwr-canvas.html` in a sandboxed iframe; `/api/mcp/host` proxies allowlisted MCP JSON-RPC (`tools/call`, `resources/read`, `resources/list`, `tools/list`) to FluxInk via server BFF; `/api/mcp/ui-resource` fetches widget HTML for initial mount.
+- FluxInk widget HTML loads ES modules from `https://unpkg.com` and canvas bundles from `https://mcp.fluxink.ai/servers/<id>/assets/*`; parent page CSP must allow those origins in `script-src`, `style-src`, `connect-src`, and `img-src`, or the iframe stays blank even when `/api/mcp/ui-resource` returns 200.
+- MCP App Host must call `AppBridge.connect()` before setting iframe `srcdoc`, otherwise the widget's `app.connect()` handshake can miss the parent bridge and remain stuck in loading.
 - `HandwritingCanvas.tsx` remains in the repo for the native-canvas path on `main`; widget branch swaps `CanvasAgentApp` to `FluxInkWidgetHost` instead of deleting the native canvas component.
+- Widget host UI should not duplicate FluxInk native toolbar actions (no React fullscreen button, no bottom Structured Result strip). Recognition send flows through AppBridge `onmessage` / `onupdatemodelcontext` into the bottom AskAI composer.
+- FluxInk widget fullscreen uses `app.requestDisplayMode({ mode: "fullscreen" })`; host must implement `onrequestdisplaymode`, update `canvas-fullscreen` layout, and call `setHostContext({ displayMode, containerDimensions })` so the widget sets `body[data-display-mode="fullscreen"]`.
+- MCP App Host `message` / `updateModelContext` capabilities must use empty objects per modality (e.g. `text: {}`), not booleans; `@modelcontextprotocol/ext-apps` Zod schema rejects `text: true` and breaks widget `app.connect()`.
+- AppBridge `oncalltool` / `onreadresource` handlers receive MCP params directly (`{ name, arguments }`, `{ uri }`), not wrapped in `request.params`; passing the wrong shape yields `Tool is not allowed ... unknown` on recognition.
+- `FluxInkWidgetHost` mount effect must not depend on `displayMode` or callback props; remounting the iframe on fullscreen toggles causes repeated `ui/initialize` warnings and flaky Send/handshake in dev.
+- Widget branch should not block canvas open on `/api/mcp/hwr/open` (`show_handwriting_canvas`); mount FluxInk UI resource directly from agent action. MCP `clientSessionTimeoutSeconds` defaults to 5s in `@openai/agents` and causes `-32001 Request timed out` when FluxInk connect takes longer.
+- Without `OPENAI_API_KEY`, `/api/agent` uses keyword fallback in `createFallbackResponse` (`画布`, `canvas`, `手写`, etc.) to emit `open_handwriting_canvas`; LLM intent routing only runs when the key is set.
 
 ## Open Questions
 

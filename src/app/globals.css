@@ -129,10 +129,12 @@ a {
 }
 
 .message-canvas-slot {
-  align-self: stretch;
+  align-self: flex-start;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
+  max-width: 100%;
   padding: 4px 0 10px;
+  width: 100%;
 }
 
 .message {
@@ -142,7 +144,7 @@ a {
 
 .message p {
   line-height: 1.55;
-  margin: 6px 0 0;
+  margin: 0;
   white-space: pre-wrap;
 }
 
@@ -155,9 +157,10 @@ a {
 
 .message.assistant {
   align-self: flex-start;
-  background: var(--panel-strong);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   max-width: 92%;
+  padding: 4px 0;
 }
 
 .message.system {
@@ -167,33 +170,53 @@ a {
   color: var(--danger);
 }
 
-.message-role {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .composer {
   border-top: 1px solid var(--border);
-  display: grid;
-  gap: 10px;
   padding: 16px;
 }
 
-.composer textarea {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  min-height: 86px;
-  outline: none;
-  padding: 12px;
-  resize: vertical;
+.composer-input {
+  position: relative;
 }
 
-.composer textarea:focus {
+.composer-input textarea {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  min-height: 96px;
+  outline: none;
+  padding: 14px 52px 14px 14px;
+  resize: vertical;
+  width: 100%;
+}
+
+.composer-input textarea:focus {
   border-color: var(--accent);
 }
 
-.composer button,
+.composer-send {
+  align-items: center;
+  background: #e8edf5;
+  border: 0;
+  border-radius: 999px;
+  bottom: 12px;
+  color: #94a3b8;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  position: absolute;
+  right: 12px;
+  width: 36px;
+}
+
+.composer-send.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.composer-send.active:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
 .canvas-actions button,
 .structured-preview-actions button {
   background: var(--accent);
@@ -204,7 +227,6 @@ a {
   padding: 10px 14px;
 }
 
-.composer button:hover:not(:disabled),
 .canvas-actions button:hover:not(:disabled),
 .structured-preview-actions button:hover:not(:disabled) {
   background: var(--accent-strong);
@@ -246,15 +268,46 @@ a {
 }
 
 .canvas-inline {
+  align-self: flex-start;
   min-height: 540px;
   width: min(100%, 760px);
 }
 
 .canvas-fullscreen {
   border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
   inset: 0;
   position: fixed;
+  width: 100vw;
   z-index: 50;
+}
+
+.canvas-fullscreen.widget-host .widget-shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.canvas-fullscreen.widget-host .fluxink-widget-frame {
+  height: 100% !important;
+}
+
+.widget-host {
+  gap: 8px;
+}
+
+.widget-host-error {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 12px;
+  color: var(--danger);
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
+.widget-host-meta {
+  padding: 0 4px 4px;
 }
 
 .canvas-fullscreen .canvas-shell {
@@ -287,14 +340,13 @@ a {
   border: 1px solid var(--border);
   border-radius: 14px;
   flex: 1;
-  min-height: 320px;
+  min-height: 480px;
   overflow: hidden;
-  padding: 12px;
+  padding: 0;
 }
 
 .fluxink-widget-frame {
   background: #fff;
-  border-radius: 12px;
   display: block;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
@@ -41,6 +41,7 @@ export function CanvasAgentApp() {
   const [recognitionError, setRecognitionError] = useState<string | null>(null);
   const [composerDraft, setComposerDraft] = useState("");
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
+  const [widgetSessionId, setWidgetSessionId] = useState(0);
 
   const canvasSummary = useMemo(
     () =>
@@ -60,26 +61,20 @@ export function CanvasAgentApp() {
     setHwrMode(action.mode);
     setHwrLanguage(action.language);
     setHwrPrompt(action.prompt);
-    setHwrOpenResult(null);
     setRecognitionText("");
     setRecognitionError(null);
 
-    const response = await fetch("/api/mcp/hwr/open", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(action),
+    // Widget host loads FluxInk UI resource directly in-browser.
+    // Avoid blocking on show_handwriting_canvas, which can exceed MCP connect timeouts.
+    setHwrOpenResult({
+      ok: true,
+      mode: action.mode,
+      language: action.language,
+      prompt: action.prompt,
+      toolName: "fluxink-widget-host",
     });
-    const payload = (await response.json()) as HwrOpenResponse;
-
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || "手写画布初始化失败");
-    }
-
-    setHwrOpenResult(payload);
     setCanvasStatus("ready");
-    setWidgetStatus("loading");
+    setWidgetSessionId((current) => current + 1);
   }
 
   async function applyActions(actions: AgentAction[]) {
@@ -152,57 +147,56 @@ export function CanvasAgentApp() {
     }
   }
 
-  function handleWidgetRecognitionChange(payload: {
-    text: string;
-    status: WidgetStatus;
-    error?: string | null;
-  }) {
-    setWidgetStatus(payload.status);
-    setRecognitionText(payload.text);
-    setRecognitionError(payload.error ?? null);
+  const stableWidgetRecognitionChange = useCallback(
+    (payload: { text: string; status: WidgetStatus; error?: string | null }) => {
+      setWidgetStatus(payload.status);
+      setRecognitionText(payload.text);
+      setRecognitionError(payload.error ?? null);
 
-    if (payload.status === "recognized") {
-      setCanvasStatus("recognized");
+      if (payload.status === "recognized") {
+        setCanvasStatus("recognized");
+        return;
+      }
+
+      if (payload.status === "error") {
+        setCanvasStatus("error");
+        return;
+      }
+
+      if (payload.status === "ready") {
+        setCanvasStatus("ready");
+      }
+    },
+    [],
+  );
+
+  const handleSendResultToComposer = useCallback((text: string) => {
+    const trimmed = text.trim();
+
+    if (!trimmed) {
       return;
     }
 
-    if (payload.status === "error") {
-      setCanvasStatus("error");
-      return;
-    }
-
-    if (payload.status === "ready") {
-      setCanvasStatus("ready");
-    }
-  }
-
-  function handleSendRecognitionToAskAIInput() {
     setCanvasDisplayMode("inline");
-
-    const text = recognitionText.trim();
-
-    if (!text) {
-      return;
-    }
-
     setComposerDraft((current) => {
       const trimmedCurrent = current.trimEnd();
 
       if (!trimmedCurrent) {
-        return text;
+        return trimmed;
       }
 
-      if (trimmedCurrent.includes(text)) {
+      if (trimmedCurrent.includes(trimmed)) {
         return trimmedCurrent;
       }
 
-      return `${trimmedCurrent}\n\n${text}`;
+      return `${trimmedCurrent}\n\n${trimmed}`;
     });
     setComposerFocusSignal((current) => current + 1);
-  }
+  }, []);
 
   const canvasSlot = canvasOpen ? (
     <FluxInkWidgetHost
+      key={widgetSessionId}
       displayMode={canvasDisplayMode}
       mode={hwrMode}
       language={hwrLanguage}
@@ -210,11 +204,9 @@ export function CanvasAgentApp() {
       uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
       openResult={hwrOpenResult}
       recognitionError={recognitionError}
-      recognitionStatus={widgetStatus}
-      recognitionText={recognitionText}
       onDisplayModeChange={setCanvasDisplayMode}
-      onRecognitionChange={handleWidgetRecognitionChange}
-      onSendToAskAIInput={handleSendRecognitionToAskAIInput}
+      onRecognitionChange={stableWidgetRecognitionChange}
+      onSendResultToComposer={handleSendResultToComposer}
     />
   ) : null;
 

@@ -71,9 +71,6 @@ export function ChatPanel({
         {messages.map((message) => (
           <Fragment key={message.id}>
             <article className={`message ${message.role}`}>
-              <span className="message-role">
-                {message.role === "user" ? "你" : message.role === "assistant" ? "Agent" : "系统"}
-              </span>
               <p>{message.content}</p>
             </article>
             {canvasSlot && canvasAfterMessageId === message.id ? (
@@ -87,22 +84,34 @@ export function ChatPanel({
       </div>
 
       <form className="composer" onSubmit={handleSubmit}>
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          placeholder="例如：我想手写一个数学公式，帮我识别后继续讨论。"
-          rows={3}
-          onChange={(event) => onDraftChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-        />
-        <button type="submit" disabled={!canSend}>
-          发送
-        </button>
+        <div className="composer-input">
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            placeholder="例如：打开画布或手写输入..."
+            rows={3}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <button
+            type="submit"
+            className={canSend ? "composer-send active" : "composer-send"}
+            disabled={!canSend}
+            aria-label="发送"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+              <path
+                d="M3.4 20.6 21 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </div>
       </form>
     </section>
   );

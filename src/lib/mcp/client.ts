@@ -39,6 +39,7 @@ type McpServerConstructor = new (options: {
   name: string;
   cacheToolsList: boolean;
   timeout: number;
+  clientSessionTimeoutSeconds?: number;
   requestInit: RequestInit;
 }) => ConnectableMcpServer;
 
@@ -90,11 +91,18 @@ export function getMcpServerUrl(): string {
 }
 
 export function createStreamableHttpMcpServer(): ConnectableMcpServer {
+  const timeoutMs = getNumberEnv("MCP_TIMEOUT_MS", 60000);
+  const clientSessionTimeoutSeconds = Math.max(
+    15,
+    Math.ceil(timeoutMs / 1000),
+  );
+
   return new MCPServerStreamableHttp({
     url: getMcpServerUrl(),
     name: getOptionalEnv("MCP_SERVER_NAME", "FluxInk MCP"),
     cacheToolsList: true,
-    timeout: getNumberEnv("MCP_TIMEOUT_MS", 30000),
+    timeout: timeoutMs,
+    clientSessionTimeoutSeconds,
     requestInit: createRequestInit(),
   }) as unknown as ConnectableMcpServer;
 }
@@ -113,7 +121,11 @@ async function createSseMcpServer(): Promise<ConnectableMcpServer | null> {
     url: getMcpServerUrl(),
     name: `${getOptionalEnv("MCP_SERVER_NAME", "FluxInk MCP")} SSE`,
     cacheToolsList: true,
-    timeout: getNumberEnv("MCP_TIMEOUT_MS", 15000),
+    timeout: getNumberEnv("MCP_TIMEOUT_MS", 60000),
+    clientSessionTimeoutSeconds: Math.max(
+      15,
+      Math.ceil(getNumberEnv("MCP_TIMEOUT_MS", 60000) / 1000),
+    ),
     requestInit: createRequestInit(),
   }) as ConnectableMcpServer;
 }
@@ -210,19 +222,17 @@ export async function readMcpUiResource(uri: string): Promise<{ contents: McpUiR
     }
 
     const response = await server.readResource(uri);
-    const contents = response.contents
-      .map((item) => {
-        if (typeof item.text === "string" && item.text.length > 0) {
-          return {
-            uri: item.uri ?? uri,
-            mimeType: item.mimeType,
-            html: item.text,
-          };
-        }
+    const contents: McpUiResourcePayload[] = [];
 
-        return null;
-      })
-      .filter((item): item is McpUiResourcePayload => item !== null);
+    for (const item of response.contents) {
+      if (typeof item.text === "string" && item.text.length > 0) {
+        contents.push({
+          uri: item.uri ?? uri,
+          mimeType: item.mimeType,
+          html: item.text,
+        });
+      }
+    }
 
     if (contents.length === 0) {
       throw new Error(`MCP UI resource did not include HTML content: ${uri}`);

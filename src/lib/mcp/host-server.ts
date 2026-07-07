@@ -57,13 +57,15 @@ function getToolName(params: Record<string, unknown> | undefined): string | unde
 }
 
 function isAllowedHostToolName(toolName: string): boolean {
-  if (ALLOWED_MCP_HOST_TOOL_NAMES.has(toolName)) {
+  const allowedNames = ALLOWED_MCP_HOST_TOOL_NAMES as Set<string>;
+
+  if (allowedNames.has(toolName)) {
     return true;
   }
 
   const normalized = toolName.replaceAll("_", "-");
 
-  return [...ALLOWED_MCP_HOST_TOOL_NAMES].some(
+  return [...allowedNames].some(
     (allowedName) => allowedName.replaceAll("_", "-") === normalized,
   );
 }
