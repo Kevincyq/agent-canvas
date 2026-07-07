@@ -1,0 +1,374 @@
+:root {
+  color-scheme: light;
+  --background: #f5f7fb;
+  --foreground: #111827;
+  --muted: #64748b;
+  --panel: #ffffff;
+  --panel-strong: #f8fafc;
+  --border: #dbe3ef;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --danger: #dc2626;
+  --success: #059669;
+  --warning: #d97706;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  min-height: 620px;
+  padding: 16px;
+}
+
+.chat-panel,
+.canvas-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-panel {
+  margin: 0 auto;
+  max-width: 960px;
+  width: 100%;
+}
+
+.panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.panel-header h1,
+.panel-header h2 {
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 2px 0 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  align-items: center;
+  background: rgba(5, 150, 105, 0.1);
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  border-radius: 999px;
+  color: var(--success);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.status-dot.busy {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.28);
+  color: var(--warning);
+}
+
+.message-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.message-canvas-slot {
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 10px;
+}
+
+.message {
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.message p {
+  line-height: 1.55;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #ffffff;
+  max-width: 88%;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  max-width: 92%;
+}
+
+.message.system {
+  align-self: stretch;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  color: var(--danger);
+}
+
+.message-role {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.composer {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.composer textarea {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-height: 86px;
+  outline: none;
+  padding: 12px;
+  resize: vertical;
+}
+
+.composer textarea:focus {
+  border-color: var(--accent);
+}
+
+.composer button,
+.canvas-actions button,
+.structured-preview-actions button {
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.composer button:hover:not(:disabled),
+.canvas-actions button:hover:not(:disabled),
+.structured-preview-actions button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.canvas-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.canvas-actions button {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 8px 10px;
+}
+
+.canvas-actions button:hover:not(:disabled) {
+  background: #eaf1ff;
+}
+
+.canvas-actions .primary-action {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.canvas-actions .primary-action:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.canvas-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 6px 0 0;
+}
+
+.canvas-inline {
+  min-height: 540px;
+  width: min(100%, 760px);
+}
+
+.canvas-fullscreen {
+  border-radius: 0;
+  inset: 0;
+  position: fixed;
+  z-index: 50;
+}
+
+.canvas-fullscreen .canvas-shell {
+  min-height: 0;
+}
+
+.canvas-shell {
+  background:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px),
+    #ffffff;
+  background-size: 28px 28px;
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+}
+
+.canvas-shell canvas {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: block;
+  height: 100%;
+  touch-action: none;
+  width: 100%;
+}
+
+.canvas-meta {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  gap: 14px;
+  padding: 10px 16px;
+}
+
+.structured-preview {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 14px;
+}
+
+.structured-preview-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.structured-preview h3 {
+  font-size: 15px;
+  line-height: 1.2;
+  margin: 2px 0 0;
+}
+
+.structured-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.structured-preview-actions button {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 8px 10px;
+}
+
+.structured-preview-actions .primary-action {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.structured-preview pre {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    height: 100vh;
+    min-height: 100vh;
+    padding: 10px;
+  }
+
+  .canvas-inline {
+    min-height: 500px;
+  }
+
+  .structured-preview-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .structured-preview-actions {
+    justify-content: stretch;
+  }
+
+  .structured-preview-actions button {
+    flex: 1;
+  }
+}
