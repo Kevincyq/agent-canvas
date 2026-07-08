@@ -51,6 +51,8 @@
 - Assistant chat messages render via `ChatMessageContent` (`react-markdown` + `remark-math` + `rehype-katex` + KaTeX CSS). Legacy `\\(...\\)` / `\\[...\\]` delimiters are normalized to `$...$` / `$$...$$` before render.
 - Chart rendering uses unified `PlotSpec` (`src/types/plot.ts`) with `render_chart` agent action. Phase 1: `kind=function` renders via `function-plot` in `PlotCard`; `line|bar|scatter` show structured placeholder pending ECharts (Phase 2). Spec lives on `ChatMessage.charts[]`.
 - Staging deploy uses GitLab CI (`.gitlab-ci.yml`): validate → Docker build → push to GitLab Container Registry → SSH `deploy/scripts/remote-deploy.sh` on demo server. Docs: `docs/DEPLOYMENT.md`. Required CI vars: `STAGING_HOST`, `STAGING_USER`, `STAGING_DEPLOY_PATH`, `STAGING_SSH_PRIVATE_KEY`, `STAGING_PUBLIC_URL`, `TURING_API_KEY`. Auto-deploy branches: `main`, `feature/mcp-app-widget-host`.
+- Staging server hostname `el-openclaw-for-boss-demo`, public IP `39.107.230.27`, user `ubuntu`, deploy path `/home/ubuntu/agent_canvas`. Bootstrap OK: Docker 29 + Compose v5, ubuntu in docker group, CI pubkey present.
+- Critical network gap: from staging server, `eaglelab-gitlab.tcljd.com` resolves to private `10.124.106.121` but HTTPS times out. `docker compose pull` from GitLab Container Registry will fail until VPC/VPN/peering or alternate deploy (build on server / public registry) is fixed.
 
 ## Open Questions
 

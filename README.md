@@ -29,18 +29,19 @@ src/types/agent.ts                  前后端共享协议
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env.local` 后配置：
+复制 `.env.example` 为 `.env.local` 后配置（预发环境变量由 GitLab CI 注入，见 `.env.staging.example`）：
 
 ```bash
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4.1-mini
+TURING_API_BASE=https://live-turing.cn.llm.tcljd.com/api/v1
+TURING_API_KEY=
+TURING_MODEL=turing/gpt-5.5
 MCP_SERVER_URL=https://mcp.fluxink.ai/servers/d706699b03524ba6aa84423954c43f3f/mcp
 MCP_SERVER_NAME=FluxInk TCL MCP
 MCP_AUTH_TOKEN=
-PORTAL_FRAME_ANCESTOR_ORIGIN=https://portal.company.com
+PORTAL_FRAME_ANCESTOR_ORIGIN=
 ```
 
-`OPENAI_API_KEY` 未配置时，`/api/agent` 只使用本地 fallback 规则：仍可打开画布并验证 FluxInk MCP 识别，但不能完成云端 AskAI 问答。`MCP_AUTH_TOKEN` 只在服务端使用，不会暴露给浏览器。
+`TURING_API_KEY` 未配置时，`/api/agent` 使用本地 fallback：仍可打开画布并验证 FluxInk MCP 识别，但不能完成云端 AskAI 问答。
 
 ## API
 
@@ -72,7 +73,7 @@ PORTAL_FRAME_ANCESTOR_ORIGIN=https://portal.company.com
 
 ```html
 <iframe
-  src="https://agent-canvas.company.com"
+  src="https://dralk-demo.tcljd.com"
   title="Canvas Agent"
   style="width: 100%; height: 720px; border: 0"
 ></iframe>
@@ -101,11 +102,50 @@ npm run dev
 
 ## 预发 / Demo 部署
 
-GitLab push 后自动部署到独立预发服务器的完整步骤见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+预发环境地址：**https://dralk-demo.tcljd.com**
 
-流程摘要：
+GitLab 仓库：`https://eaglelab-gitlab.tcljd.com/yangqin.chen/agent_canvas`
 
-1. 预发服务器执行 `deploy/scripts/bootstrap-server.sh` 一次性初始化
-2. 在 GitLab **Settings → CI/CD → Variables** 配置 `STAGING_HOST`、`STAGING_SSH_PRIVATE_KEY`、`TURING_API_KEY` 等
-3. push 到 `main` 或 `feature/mcp-app-widget-host` 触发 Pipeline
-4. 通过 `STAGING_PUBLIC_URL` 公网访问
+### CI/CD 流程
+
+push 到 `main` 或 `feature/mcp-app-widget-host` 后自动执行：
+
+```text
+validate (typecheck / lint)
+  → build:image (Docker → GitLab Container Registry)
+  → deploy:staging (SSH → 预发服务器 docker compose up)
+```
+
+预发服务器通过 Nginx 提供 HTTPS，反代到本机 `127.0.0.1:3000`；**不要**用 `http://IP:3000` 对外访问。
+
+### GitLab CI/CD Variables（必填）
+
+| 变量 | 示例 / 说明 |
+|------|-------------|
+| `STAGING_HOST` | 预发服务器 IP |
+| `STAGING_USER` | `ubuntu`（不要 Mask） |
+| `STAGING_DEPLOY_PATH` | `/home/ubuntu/agent_canvas` |
+| `STAGING_SSH_PRIVATE_KEY` | Type=**File**，Protect，**不要 Mask** |
+| `STAGING_PUBLIC_URL` | `https://dralk-demo.tcljd.com` |
+| `TURING_API_KEY` | Turing 代理 Key（Mask） |
+
+### 服务器一次性初始化
+
+```bash
+cd /home/ubuntu/agent_canvas
+sudo env DEPLOY_USER=ubuntu STAGING_DEPLOY_PATH=/home/ubuntu/agent_canvas APP_PORT=3000 \
+  bash deploy/scripts/bootstrap-server.sh
+
+sudo DOMAIN=dralk-demo.tcljd.com EMAIL=you@tcl.com \
+  bash deploy/scripts/setup-nginx-tls.sh
+```
+
+### 验证部署
+
+```bash
+curl -s https://dralk-demo.tcljd.com/api/health
+```
+
+成功应返回 `{"ok":true,"service":"agent-canvas-mvp",...}`。
+
+完整步骤、故障排查见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。

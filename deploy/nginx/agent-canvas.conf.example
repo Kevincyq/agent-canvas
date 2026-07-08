@@ -1,9 +1,16 @@
-# Optional reverse proxy for public HTTPS access.
-# Adjust server_name and upstream port before enabling.
+# Agent Canvas staging reverse proxy.
+# Replace __DOMAIN__ before enabling, then run certbot.
 
 server {
   listen 80;
-  server_name agent-canvas-demo.example.com;
+  listen [::]:80;
+  server_name __DOMAIN__;
+
+  # ACME HTTP-01 challenge (Let's Encrypt)
+  location ^~ /.well-known/acme-challenge/ {
+    root /var/www/html;
+    default_type "text/plain";
+  }
 
   location / {
     proxy_pass http://127.0.0.1:3000;
@@ -14,5 +21,8 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    client_max_body_size 20m;
   }
 }
