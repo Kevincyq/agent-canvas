@@ -48,6 +48,8 @@
 - `src/lib/mcp/client.ts` reuses a shared FluxInk MCP session across `/api/mcp/host` and ui-resource calls; reconnect only after timeout/transport errors. AppBridge tool handlers must return `{ isError: true }` instead of throwing to avoid browser `unhandledRejection`.
 - Without `OPENAI_API_KEY`, `/api/agent` uses keyword fallback in `createFallbackResponse` (`画布`, `canvas`, `手写`, etc.) to emit `open_handwriting_canvas`; LLM intent routing only runs when the key is set.
 - PoC LLM config prefers `TURING_API_KEY` + `TURING_API_BASE` (OpenAI-compatible proxy); default model id is `turing/gpt-5.5` via `chat.completions`. Agent path no longer connects MCP on each `/api/agent` call; canvas/recognition stay on `/api/mcp/host`.
+- Assistant chat messages render via `ChatMessageContent` (`react-markdown` + `remark-math` + `rehype-katex` + KaTeX CSS). Legacy `\\(...\\)` / `\\[...\\]` delimiters are normalized to `$...$` / `$$...$$` before render.
+- Chart rendering uses unified `PlotSpec` (`src/types/plot.ts`) with `render_chart` agent action. Phase 1: `kind=function` renders via `function-plot` in `PlotCard`; `line|bar|scatter` show structured placeholder pending ECharts (Phase 2). Spec lives on `ChatMessage.charts[]`.
 
 ## Open Questions
 

@@ -4,6 +4,7 @@ import {
   type AgentRequest,
   type AgentResponse,
 } from "@/types/agent";
+import { tryBuildPlotSpecFromMessage } from "@/lib/plot/fallback";
 
 export function stripJsonFence(value: string): string {
   const trimmed = value.trim();
@@ -26,6 +27,18 @@ export function parseAgentResponse(rawOutput: string): AgentResponse {
 export function createFallbackResponse(request: AgentRequest): AgentResponse {
   const text = request.message.toLowerCase();
   const actions: AgentAction[] = [];
+
+  const plotSpec = tryBuildPlotSpecFromMessage(request.message);
+
+  if (plotSpec) {
+    return {
+      message: plotSpec.kind === "function"
+        ? `已根据请求绘制函数图像。${plotSpec.title ? `（${plotSpec.title}）` : ""}`
+        : "已识别图表请求，但当前 fallback 仅支持 f(x)=... 形式的函数图。",
+      actions: plotSpec.kind === "function" ? [{ type: "render_chart", spec: plotSpec }] : [],
+    };
+  }
+
   const isStructureIntent =
     text.includes("分子") ||
     text.includes("结构式") ||
@@ -85,9 +98,40 @@ export function buildAgentPrompt(request: AgentRequest): string {
         message: "Short natural-language response for the user in Chinese.",
         actions: [
           {
-            type: "reply | open_handwriting_canvas",
+            type: "reply | open_handwriting_canvas | render_chart",
           },
         ],
+        renderChartExamples: {
+          function: {
+            type: "render_chart",
+            spec: {
+              kind: "function",
+              title: "f(x) = 5x^2 + 1",
+              xDomain: [-3, 3],
+              expressions: [{ fn: "5 * x^2 + 1", domain: [-3, 3], label: "f(x)" }],
+            },
+          },
+          bar: {
+            type: "render_chart",
+            spec: {
+              kind: "bar",
+              title: "季度销售额",
+              xAxisLabel: "季度",
+              yAxisLabel: "销售额",
+              series: [
+                {
+                  label: "2025",
+                  points: [
+                    { x: 1, y: 100 },
+                    { x: 2, y: 120 },
+                    { x: 3, y: 90 },
+                    { x: 4, y: 150 },
+                  ],
+                },
+              ],
+            },
+          },
+        },
       },
     },
     null,

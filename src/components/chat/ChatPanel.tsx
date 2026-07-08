@@ -4,6 +4,8 @@ import type { FormEvent } from "react";
 import type { ReactNode } from "react";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
+import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { PlotCard } from "@/components/chart/PlotCard";
 import type { ChatMessage } from "@/types/agent";
 
 type ChatPanelProps = {
@@ -71,8 +73,13 @@ export function ChatPanel({
         {messages.map((message) => (
           <Fragment key={message.id}>
             <article className={`message ${message.role}`}>
-              <p>{message.content}</p>
+              <ChatMessageContent content={message.content} variant={message.role} />
             </article>
+            {message.charts?.map((spec, index) => (
+              <div key={`${message.id}-chart-${index}`} className="message-chart-slot">
+                <PlotCard spec={spec} />
+              </div>
+            ))}
             {canvasSlot && canvasAfterMessageId === message.id ? (
               <div className="message-canvas-slot">{canvasSlot}</div>
             ) : null}

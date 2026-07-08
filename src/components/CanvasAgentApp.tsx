@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
 import { createCanvasSummary } from "@/lib/canvas/actions";
+import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import type {
   AgentAction,
@@ -125,6 +126,7 @@ export function CanvasAgentApp() {
         id: crypto.randomUUID(),
         role: "assistant",
         content: payload.message,
+        charts: extractRenderChartSpecs(payload.actions),
       };
       const opensCanvas = payload.actions.some((action) => action.type === "open_handwriting_canvas");
 

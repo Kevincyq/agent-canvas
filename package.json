@@ -16,10 +16,16 @@
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "latest",
     "@openai/agents": "latest",
+    "function-plot": "^1.25.4",
+    "katex": "^0.17.0",
     "next": "latest",
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zod": "latest"
   },
   "devDependencies": {

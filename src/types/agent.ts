@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { PlotSpecSchema } from "@/types/plot";
+
 export const PointSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -44,6 +46,10 @@ export const AgentActionSchema = z.discriminatedUnion("type", [
     language: z.string().default(""),
     prompt: z.string(),
     force_new: z.boolean().default(true),
+  }),
+  z.object({
+    type: z.literal("render_chart"),
+    spec: PlotSpecSchema,
   }),
 ]);
 
@@ -135,8 +141,11 @@ export type HandwritingPayload = z.infer<typeof HandwritingPayloadSchema>;
 export type HwrRecognizeRequest = z.infer<typeof HwrRecognizeRequestSchema>;
 export type HwrRecognizeResponse = z.infer<typeof HwrRecognizeResponseSchema>;
 
+import type { PlotSpec } from "@/types/plot";
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  charts?: PlotSpec[];
 };
