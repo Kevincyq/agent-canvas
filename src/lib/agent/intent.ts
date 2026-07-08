@@ -60,7 +60,7 @@ export function createFallbackResponse(request: AgentRequest): AgentResponse {
     message:
       actions.length > 0
         ? "我已识别到手写输入意图，正在对话中打开手写画布。你可以直接书写，停笔后我会自动识别并更新结构化结果。"
-        : "当前未配置 OPENAI_API_KEY，无法调用云端 AI 处理这个问题。请配置后重试；手写画布和 FluxInk MCP 识别链路仍可继续本地验证。",
+        : "当前未配置 TURING_API_KEY 或 OPENAI_API_KEY，无法调用云端 AI。请配置后重试；手写画布和 FluxInk MCP 识别链路仍可继续本地验证。",
     actions:
       actions.length > 0
         ? actions

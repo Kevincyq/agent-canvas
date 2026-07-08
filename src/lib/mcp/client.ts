@@ -62,14 +62,60 @@ export type McpToolCallResult = {
 const DEFAULT_MCP_URL =
   "https://mcp.fluxink.ai/servers/d706699b03524ba6aa84423954c43f3f/mcp";
 
-async function withMcpServer<T>(operation: (server: ConnectableMcpServer) => Promise<T>): Promise<T> {
-  const server = createStreamableHttpMcpServer();
+let sharedMcpServer: ConnectableMcpServer | null = null;
+let sharedMcpConnectPromise: Promise<ConnectableMcpServer> | null = null;
 
-  try {
-    await server.connect();
-    return await operation(server);
-  } finally {
+function isMcpSessionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("timed out") ||
+    message.includes("-32001") ||
+    message.includes("not connected") ||
+    message.includes("connect")
+  );
+}
+
+async function resetSharedMcpServer(): Promise<void> {
+  const server = sharedMcpServer;
+  sharedMcpServer = null;
+  sharedMcpConnectPromise = null;
+
+  if (server) {
     await server.close().catch(() => undefined);
+  }
+}
+
+async function getSharedMcpServer(): Promise<ConnectableMcpServer> {
+  if (sharedMcpServer) {
+    return sharedMcpServer;
+  }
+
+  if (!sharedMcpConnectPromise) {
+    sharedMcpConnectPromise = (async () => {
+      const server = createStreamableHttpMcpServer();
+      await server.connect();
+      sharedMcpServer = server;
+      return server;
+    })().catch(async (error) => {
+      await resetSharedMcpServer();
+      throw error;
+    });
+  }
+
+  return sharedMcpConnectPromise;
+}
+
+async function withMcpServer<T>(operation: (server: ConnectableMcpServer) => Promise<T>): Promise<T> {
+  try {
+    const server = await getSharedMcpServer();
+    return await operation(server);
+  } catch (error) {
+    if (isMcpSessionError(error)) {
+      await resetSharedMcpServer();
+    }
+
+    throw error;
   }
 }
 
@@ -368,30 +414,30 @@ async function callResolvedMcpTool(
   aliases: readonly string[],
   args: Record<string, unknown>,
 ): Promise<McpToolCallResult> {
-  const server = createStreamableHttpMcpServer();
-
   try {
-    await server.connect();
+    return await withMcpServer(async (server) => {
+      if (!server.listTools || !server.callTool) {
+        throw new Error("The connected MCP server does not expose listTools/callTool.");
+      }
 
-    if (!server.listTools || !server.callTool) {
-      throw new Error("The connected MCP server does not expose listTools/callTool.");
+      const toolName = pickToolName(await server.listTools(), aliases);
+
+      return {
+        ok: true,
+        toolName,
+        result: normalizeMcpResult(await server.callTool(toolName, args)),
+      };
+    });
+  } catch (error) {
+    if (isMcpSessionError(error)) {
+      await resetSharedMcpServer();
     }
 
-    const toolName = pickToolName(await server.listTools(), aliases);
-
-    return {
-      ok: true,
-      toolName,
-      result: normalizeMcpResult(await server.callTool(toolName, args)),
-    };
-  } catch (error) {
     return {
       ok: false,
       toolName: aliases[0],
       error: error instanceof Error ? error.message : String(error),
     };
-  } finally {
-    await server.close().catch(() => undefined);
   }
 }
 

@@ -1,31 +1,28 @@
-import { Agent, connectMcpServers, run } from "@openai/agents";
+import { Agent, run, setTracingDisabled } from "@openai/agents";
 
-import { getOptionalEnv } from "@/lib/env";
 import { buildAgentPrompt, createFallbackResponse, parseAgentResponse } from "@/lib/agent/intent";
-import { createStreamableHttpMcpServer } from "@/lib/mcp/client";
+import {
+  configureOpenAIClient,
+  getConfiguredOpenAIModel,
+} from "@/lib/agent/openai-client";
 import type { AgentRequest, AgentResponse } from "@/types/agent";
 
-type ConnectedMcpServers = {
-  active: unknown[];
-  close: () => Promise<void>;
-};
-
 const AGENT_INSTRUCTIONS = `
-你是一个 AskAI + Canvas Agent，用于普通问答和连接 FluxInk MCP handwriting recognition demo。
+你是一个 AskAI + Canvas Agent，用于 Portal PoC：普通问答、手写画布意图识别、以及处理手写识别后的续聊。
 你必须只输出 JSON，不要输出 Markdown，不要解释 schema。
 
 目标：
-1. 识别用户是否只是普通问答；如果是，直接在 message 中回答用户。
-2. 识别用户是否要手写、绘制、草图、写数学公式、写化学公式、画分子结构或输入手写内容。
-3. 如果用户需要手写输入，返回 open_handwriting_canvas action。
-4. 如果用户已经把手写识别结果放进输入框，并要求解题、分析、整理、转换格式或继续处理，应直接回答，不要再次打开画布。
-5. 不要直接编造或调用任意 MCP 工具名。
+1. 识别用户是否只是普通问答、格式化、解题、追问；如果是，直接在 message 中完整回答用户。
+2. 识别用户是否要打开/新建手写画布，例如：打开画布、我要手写、手写输入、写公式、画结构式、重新开一个画布。
+3. 仅当用户明确需要手写输入时，返回 open_handwriting_canvas action。
+4. 如果用户消息里已经包含手写识别结果（LaTeX、公式、SMILES、结构化文本）并要求整理、转换格式、解题、解释或继续追问，应直接回答，不要再次打开画布。
+5. 用户说“新开画布”“重新手写”“再开一个画布”时，可以再次返回 open_handwriting_canvas，并 force_new=true。
+6. 不要编造或调用任意 MCP 工具名。
 
 输出必须符合：
 {
   "message": "给用户看的中文回复。普通问答时这里就是完整回答；打开画布时这里是短回复",
   "actions": [
-    { "type": "reply", "message": "..." },
     {
       "type": "open_handwriting_canvas",
       "mode": "general",
@@ -44,34 +41,27 @@ mode 规则：
 - actions 返回 []。
 - 用中文回答。
 - 数学内容可使用 LaTeX。
+- 结合 recentHistory 理解追问，不需要维护多个 thread。
 `;
 
-async function connectMcpForAgent(): Promise<ConnectedMcpServers | null> {
-  try {
-    return (await connectMcpServers([createStreamableHttpMcpServer()] as never[], {
-      connectInParallel: true,
-    })) as ConnectedMcpServers;
-  } catch {
-    return null;
-  }
-}
-
 export async function runCanvasAgent(request: AgentRequest): Promise<AgentResponse> {
-  if (!process.env.OPENAI_API_KEY) {
+  const apiKey = configureOpenAIClient();
+
+  if (!apiKey) {
     return createFallbackResponse(request);
   }
 
-  const connectedServers = await connectMcpForAgent();
-
   try {
+    setTracingDisabled(true);
+
     const agent = new Agent({
       name: "Canvas Agent Intent Router",
-      model: getOptionalEnv("OPENAI_MODEL", "gpt-4.1-mini"),
+      model: getConfiguredOpenAIModel(),
       instructions: AGENT_INSTRUCTIONS,
-      mcpServers: (connectedServers?.active ?? []) as never[],
     });
 
     const result = await run(agent, buildAgentPrompt(request));
+
     return parseAgentResponse(String(result.finalOutput ?? ""));
   } catch (error) {
     const fallback = createFallbackResponse(request);
@@ -80,10 +70,8 @@ export async function runCanvasAgent(request: AgentRequest): Promise<AgentRespon
       ...fallback,
       message:
         error instanceof Error
-          ? `模型意图识别失败，已使用本地 fallback：${error.message}`
-          : "模型意图识别失败，已使用本地 fallback。",
+          ? `模型调用失败，已使用本地 fallback：${error.message}`
+          : "模型调用失败，已使用本地 fallback。",
     };
-  } finally {
-    await connectedServers?.close().catch(() => undefined);
   }
 }

@@ -45,7 +45,9 @@
 - AppBridge `oncalltool` / `onreadresource` handlers receive MCP params directly (`{ name, arguments }`, `{ uri }`), not wrapped in `request.params`; passing the wrong shape yields `Tool is not allowed ... unknown` on recognition.
 - `FluxInkWidgetHost` mount effect must not depend on `displayMode` or callback props; remounting the iframe on fullscreen toggles causes repeated `ui/initialize` warnings and flaky Send/handshake in dev.
 - Widget branch should not block canvas open on `/api/mcp/hwr/open` (`show_handwriting_canvas`); mount FluxInk UI resource directly from agent action. MCP `clientSessionTimeoutSeconds` defaults to 5s in `@openai/agents` and causes `-32001 Request timed out` when FluxInk connect takes longer.
+- `src/lib/mcp/client.ts` reuses a shared FluxInk MCP session across `/api/mcp/host` and ui-resource calls; reconnect only after timeout/transport errors. AppBridge tool handlers must return `{ isError: true }` instead of throwing to avoid browser `unhandledRejection`.
 - Without `OPENAI_API_KEY`, `/api/agent` uses keyword fallback in `createFallbackResponse` (`画布`, `canvas`, `手写`, etc.) to emit `open_handwriting_canvas`; LLM intent routing only runs when the key is set.
+- PoC LLM config prefers `TURING_API_KEY` + `TURING_API_BASE` (OpenAI-compatible proxy); default model id is `turing/gpt-5.5` via `chat.completions`. Agent path no longer connects MCP on each `/api/agent` call; canvas/recognition stay on `/api/mcp/host`.
 
 ## Open Questions
 

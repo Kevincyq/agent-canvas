@@ -18,7 +18,7 @@ const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "你好，我是 Canvas Agent。你可以让我在对话中打开 FluxInk 原生手写画布，识别结果会回到 AskAI 输入框。",
+    "你好，我是 Canvas Agent。你可以说「打开画布」或「我要手写输入」，识别结果会回到 AskAI，再发给我整理、解题或继续追问。",
 };
 
 type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";

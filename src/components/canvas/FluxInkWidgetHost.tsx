@@ -65,6 +65,37 @@ function createJsonRpcRequest(method: string, params?: Record<string, unknown>) 
   };
 }
 
+function asCallToolError(message: string): Record<string, unknown> {
+  return {
+    content: [
+      {
+        type: "text",
+        text: message,
+      },
+    ],
+    isError: true,
+  };
+}
+
+async function proxyHostJsonRpc(
+  method: string,
+  params?: Record<string, unknown>,
+): Promise<{ ok: true; result: unknown } | { ok: false; message: string }> {
+  const response = await proxyMcpHostRequest(createJsonRpcRequest(method, params));
+
+  if (response.error) {
+    return {
+      ok: false,
+      message: response.error.message,
+    };
+  }
+
+  return {
+    ok: true,
+    result: response.result,
+  };
+}
+
 function asCallToolResult(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
@@ -298,62 +329,53 @@ export function FluxInkWidgetHost({
         };
 
         bridge.oncalltool = async (params) => {
-          try {
-            const response = await proxyMcpHostRequest(
-              createJsonRpcRequest("tools/call", params),
-            );
+          const proxied = await proxyHostJsonRpc("tools/call", params);
 
-            if (response.error) {
-              throw new Error(response.error.message);
-            }
-
-            const toolResult = asCallToolResult(response.result);
-            deliverRecognizedText(
-              extractRecognitionText(toolResult.structuredContent ?? response.result) ?? "",
-            );
-
-            return toolResult;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "FluxInk 识别失败";
+          if (!proxied.ok) {
             propsRef.current.onRecognitionChange({
               text: "",
               status: "error",
-              error: message,
+              error: proxied.message,
             });
-            throw error;
+            return asCallToolError(proxied.message);
           }
+
+          const toolResult = asCallToolResult(proxied.result);
+          deliverRecognizedText(
+            extractRecognitionText(toolResult.structuredContent ?? proxied.result) ?? "",
+          );
+
+          return toolResult;
         };
 
         bridge.onreadresource = async (params) => {
-          const response = await proxyMcpHostRequest(
-            createJsonRpcRequest("resources/read", params),
-          );
+          const proxied = await proxyHostJsonRpc("resources/read", params);
 
-          if (response.error) {
-            throw new Error(response.error.message);
+          if (!proxied.ok) {
+            return asCallToolError(proxied.message);
           }
 
-          return response.result;
+          return proxied.result;
         };
 
         bridge.onlistresources = async () => {
-          const response = await proxyMcpHostRequest(createJsonRpcRequest("resources/list"));
+          const proxied = await proxyHostJsonRpc("resources/list");
 
-          if (response.error) {
-            throw new Error(response.error.message);
+          if (!proxied.ok) {
+            return { resources: [] };
           }
 
-          return response.result;
+          return proxied.result;
         };
 
         bridge.onlisttools = async () => {
-          const response = await proxyMcpHostRequest(createJsonRpcRequest("tools/list"));
+          const proxied = await proxyHostJsonRpc("tools/list");
 
-          if (response.error) {
-            throw new Error(response.error.message);
+          if (!proxied.ok) {
+            return { tools: [] };
           }
 
-          return response.result;
+          return proxied.result;
         };
 
         bridge.addEventListener?.("initialized", () => {
