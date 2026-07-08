@@ -98,3 +98,14 @@ npm run dev
 ```
 
 本文件仅提供命令说明，当前实现过程没有自动安装依赖、编译或构建项目。
+
+## 预发 / Demo 部署
+
+GitLab push 后自动部署到独立预发服务器的完整步骤见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+
+流程摘要：
+
+1. 预发服务器执行 `deploy/scripts/bootstrap-server.sh` 一次性初始化
+2. 在 GitLab **Settings → CI/CD → Variables** 配置 `STAGING_HOST`、`STAGING_SSH_PRIVATE_KEY`、`TURING_API_KEY` 等
+3. push 到 `main` 或 `feature/mcp-app-widget-host` 触发 Pipeline
+4. 通过 `STAGING_PUBLIC_URL` 公网访问

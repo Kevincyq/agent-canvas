@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   async headers() {
     const portalOrigin = process.env.PORTAL_FRAME_ANCESTOR_ORIGIN;
