@@ -68,7 +68,31 @@ ssh-keygen -t ed25519 -C "gitlab-ci-agent-canvas" -f ./agent-canvas-staging-depl
 | `STAGING_HOST` | 预发服务器 IP 或域名 | `10.1.2.3` | 否 |
 | `STAGING_USER` | SSH 用户 | `deploy` | 否 |
 | `STAGING_DEPLOY_PATH` | 部署目录 | `/opt/agent-canvas` | 否 |
-| `STAGING_SSH_PRIVATE_KEY` | CI 部署私钥全文 | `-----BEGIN...` | 是 |
+| `STAGING_SSH_PRIVATE_KEY` | CI 部署私钥（见下方说明） | File 或 Variable | Protect ✅，**不要 Mask** |
+
+私钥变量三种填法（任选其一）：
+
+**推荐：Type = File**
+
+1. Add variable → Key: `STAGING_SSH_PRIVATE_KEY`
+2. **Type 选 File**（不是 Variable）
+3. Value 粘贴私钥全文（含 `BEGIN`/`END` 行）
+4. 勾选 **Protect variable**，**不要勾选 Mask variable**
+5. CI 会把内容写入临时文件，脚本自动 `cp` 到 `~/.ssh/id_rsa`
+
+**备选：Type = Variable（不 Mask）**
+
+- 同上粘贴私钥全文，Type 选 Variable，只勾 Protect，不勾 Mask
+
+**备选：Base64 单行（可 Mask）**
+
+GitLab 的 Mask 不允许换行和空格，原始私钥无法 Mask。若必须 Mask，在本地生成单行 base64：
+
+```bash
+base64 < agent-canvas-staging-deploy | tr -d '\n'
+```
+
+GitLab 变量 Key 改为 `STAGING_SSH_PRIVATE_KEY_B64`，Value 粘贴这一整行，可勾选 Mask。
 | `STAGING_PUBLIC_URL` | 公网访问地址（用于 GitLab Environment） | `http://10.1.2.3:3000` | 否 |
 
 ### 必填（应用密钥）

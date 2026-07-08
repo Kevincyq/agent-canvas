@@ -13,6 +13,10 @@ tsconfig.tsbuildinfo
 .env.local
 .env.*.local
 
+# Local CI deploy keys (never commit)
+agent-canvas-staging-deploy
+agent-canvas-staging-deploy.pub
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
