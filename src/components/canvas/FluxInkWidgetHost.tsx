@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
+import {
+  DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI,
+  isRecognizeHandwritingToolName,
+} from "@/lib/mcp/constants";
 import { proxyMcpHostRequest } from "@/lib/mcp/host-proxy";
 import { extractRecognitionText } from "@/lib/mcp/recognition";
 import { extractTextFromContentBlocks } from "@/lib/mcp/widget-content";
@@ -100,7 +103,45 @@ async function proxyHostJsonRpc(
   };
 }
 
-function asCallToolResult(value: unknown): Record<string, unknown> {
+function asRecognizePayload(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Recognition result was empty.",
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return {
+    success: record.success !== false,
+    error: record.error ?? null,
+    ...record,
+  };
+}
+
+function asRecognizeCallToolResult(value: unknown): Record<string, unknown> {
+  const result = asRecognizePayload(value);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(result),
+      },
+    ],
+    structuredContent: {
+      success: result.success !== false,
+      result,
+    },
+  };
+}
+
+function asCallToolResult(value: unknown, toolName?: string): Record<string, unknown> {
+  if (toolName && isRecognizeHandwritingToolName(toolName)) {
+    return asRecognizeCallToolResult(value);
+  }
+
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
 
@@ -365,7 +406,7 @@ export function FluxInkWidgetHost({
             return asCallToolError(proxied.message);
           }
 
-          const toolResult = asCallToolResult(proxied.result);
+          const toolResult = asCallToolResult(proxied.result, params.name);
           deliverRecognizedText(
             extractRecognitionText(toolResult.structuredContent ?? proxied.result) ?? "",
           );
@@ -410,6 +451,7 @@ export function FluxInkWidgetHost({
           const currentMode = propsRef.current.mode;
           const currentLanguage = propsRef.current.language;
           const currentPrompt = propsRef.current.prompt;
+          const apiBaseUrl = window.location.origin;
 
           bridge.sendToolInput({
             arguments: {
@@ -417,7 +459,7 @@ export function FluxInkWidgetHost({
               language: currentOpenResult?.language ?? currentLanguage,
               prompt: currentOpenResult?.prompt ?? currentPrompt,
               force_new: true,
-              apiBaseUrl: currentOpenResult?.apiBaseUrl,
+              apiBaseUrl,
             },
           });
 
@@ -431,7 +473,7 @@ export function FluxInkWidgetHost({
                     mode: currentOpenResult.mode ?? currentMode,
                     language: currentOpenResult.language ?? currentLanguage,
                     prompt: currentOpenResult.prompt ?? currentPrompt,
-                    apiBaseUrl: currentOpenResult.apiBaseUrl,
+                    apiBaseUrl,
                     message: currentOpenResult.message,
                   }),
                 },
@@ -441,7 +483,7 @@ export function FluxInkWidgetHost({
                 mode: currentOpenResult.mode ?? currentMode,
                 language: currentOpenResult.language ?? currentLanguage,
                 prompt: currentOpenResult.prompt ?? currentPrompt,
-                apiBaseUrl: currentOpenResult.apiBaseUrl,
+                apiBaseUrl,
                 message: currentOpenResult.message,
               },
             });
