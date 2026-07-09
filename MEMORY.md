@@ -50,12 +50,11 @@
 - PoC LLM config prefers `TURING_API_KEY` + `TURING_API_BASE` (OpenAI-compatible proxy); default model id is `turing/gpt-5.5` via `chat.completions`. Agent path no longer connects MCP on each `/api/agent` call; canvas/recognition stay on `/api/mcp/host`.
 - Assistant chat messages render via `ChatMessageContent` (`react-markdown` + `remark-math` + `rehype-katex` + KaTeX CSS). Legacy `\\(...\\)` / `\\[...\\]` delimiters are normalized to `$...$` / `$$...$$` before render.
 - Chart rendering uses unified `PlotSpec` (`src/types/plot.ts`) with `render_chart` agent action. Phase 1: `kind=function` renders via `function-plot` in `PlotCard`; `line|bar|scatter` show structured placeholder pending ECharts (Phase 2). Spec lives on `ChatMessage.charts[]`.
-- Staging deploy uses GitLab CI (`.gitlab-ci.yml`): validate → Docker build → push to GitLab Container Registry → SSH `deploy/scripts/remote-deploy.sh` on demo server. Docs: `docs/DEPLOYMENT.md`. Required CI vars: `STAGING_HOST`, `STAGING_USER`, `STAGING_DEPLOY_PATH`, `STAGING_SSH_PRIVATE_KEY`, `STAGING_PUBLIC_URL`, `TURING_API_KEY`. Auto-deploy branches: `main`, `feature/mcp-app-widget-host`.
-- Staging server hostname `el-openclaw-for-boss-demo`, public IP `39.107.230.27`, user `ubuntu`, deploy path `/home/ubuntu/agent_canvas`. Bootstrap OK: Docker 29 + Compose v5, ubuntu in docker group, CI pubkey present.
-- Critical network gap: from staging server, `eaglelab-gitlab.tcljd.com` resolves to private `10.124.106.121` but HTTPS times out. `docker compose pull` from GitLab Container Registry will fail until VPC/VPN/peering or alternate deploy (build on server / public registry) is fixed.
+- Staging deploy is **local push** via `pnpm run deploy:staging` (`deploy/scripts/local-deploy.sh`): rsync repo → `ubuntu@39.107.230.27:/home/ubuntu/agent_canvas`, upload `.env.local` as server `.env`, `docker build` on server (`deploy/docker-compose.local.yml`). Public URL: `https://dralk-demo.tcljd.com`. GitLab CI disabled (`workflow: when: never`) due to company network policy blocking GitLab ↔ staging server.
+- Staging server hostname `el-openclaw-for-boss-demo`, public IP `39.107.230.27`, user `ubuntu`, deploy path `/home/ubuntu/agent_canvas`. Nginx + Let's Encrypt TLS configured for `dralk-demo.tcljd.com`.
 
 ## Open Questions
 
-- Production Portal origin and deployment target are not confirmed beyond demo/staging GitLab CI flow.
+- Production Portal origin and deployment target are not confirmed beyond demo staging at `https://dralk-demo.tcljd.com` via local deploy script.
 - Whether `openai-agents-js/` is intended as a vendored source dependency, a reference checkout, or both is not yet confirmed.
 - Whether the MVP should eventually embed FluxInk's MCP App widgets directly, or keep the local native canvas as the primary Portal UI and use MCP only behind the server, is not yet confirmed. Active PoC work on `feature/mcp-app-widget-host` pursues the widget host path while `main` keeps the native canvas baseline.

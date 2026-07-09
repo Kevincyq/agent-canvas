@@ -15,9 +15,11 @@ default:
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "feature/mcp-app-widget-host"
+    - when: never
+
+# GitLab CI/CD is disabled for this project.
+# Company network policy blocks GitLab ↔ staging server connectivity.
+# Use local deploy instead: pnpm run deploy:staging
 
 validate:typecheck:
   stage: validate

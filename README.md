@@ -102,50 +102,33 @@ npm run dev
 
 ## 预发 / Demo 部署
 
-预发环境地址：**https://dralk-demo.tcljd.com**
+预发环境：**https://dralk-demo.tcljd.com**  
+GitLab 仓库：`https://eaglelab-gitlab.tcljd.com/yangqin.chen/agent_canvas`（仅作代码版本管理）
 
-GitLab 仓库：`https://eaglelab-gitlab.tcljd.com/yangqin.chen/agent_canvas`
-
-### CI/CD 流程
-
-push 到 `main` 或 `feature/mcp-app-widget-host` 后自动执行：
-
-```text
-validate (typecheck / lint)
-  → build:image (Docker → GitLab Container Registry)
-  → deploy:staging (SSH → 预发服务器 docker compose up)
-```
-
-预发服务器通过 Nginx 提供 HTTPS，反代到本机 `127.0.0.1:3000`；**不要**用 `http://IP:3000` 对外访问。
-
-### GitLab CI/CD Variables（必填）
-
-| 变量 | 示例 / 说明 |
-|------|-------------|
-| `STAGING_HOST` | 预发服务器 IP |
-| `STAGING_USER` | `ubuntu`（不要 Mask） |
-| `STAGING_DEPLOY_PATH` | `/home/ubuntu/agent_canvas` |
-| `STAGING_SSH_PRIVATE_KEY` | Type=**File**，Protect，**不要 Mask** |
-| `STAGING_PUBLIC_URL` | `https://dralk-demo.tcljd.com` |
-| `TURING_API_KEY` | Turing 代理 Key（Mask） |
-
-### 服务器一次性初始化
+### 发布流程（本地部署，不用 GitLab CI）
 
 ```bash
-cd /home/ubuntu/agent_canvas
-sudo env DEPLOY_USER=ubuntu STAGING_DEPLOY_PATH=/home/ubuntu/agent_canvas APP_PORT=3000 \
-  bash deploy/scripts/bootstrap-server.sh
+# 1. push 代码到 GitLab
+git push origin feature/mcp-app-widget-host
 
-sudo DOMAIN=dralk-demo.tcljd.com EMAIL=you@tcl.com \
-  bash deploy/scripts/setup-nginx-tls.sh
+# 2. 本地一键部署到预发服务器
+cp deploy/deploy.env.example deploy/deploy.env   # 首次
+pnpm run deploy:staging
 ```
 
-### 验证部署
+流程：`rsync` 代码 → 上传 `.env.local` → 服务器 `docker build` + `docker compose up` → Nginx HTTPS 反代。
+
+### 首次准备
+
+```bash
+cp deploy/deploy.env.example deploy/deploy.env
+# 配置 SSH_KEY、STAGING_HOST 等；确保 .env.local 已填写 TURING_API_KEY
+```
+
+服务器 Nginx/TLS 与 Docker 初始化见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+
+### 验证
 
 ```bash
 curl -s https://dralk-demo.tcljd.com/api/health
 ```
-
-成功应返回 `{"ok":true,"service":"agent-canvas-mvp",...}`。
-
-完整步骤、故障排查见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。

@@ -11,7 +11,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "deploy:staging": "bash deploy/scripts/local-deploy.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "latest",

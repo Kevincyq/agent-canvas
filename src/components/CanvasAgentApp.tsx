@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
 import { createCanvasSummary } from "@/lib/canvas/actions";
+import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import type {
@@ -43,6 +44,9 @@ export function CanvasAgentApp() {
   const [composerDraft, setComposerDraft] = useState("");
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
   const [widgetSessionId, setWidgetSessionId] = useState(0);
+  const hwrPromptRef = useRef("");
+
+  hwrPromptRef.current = hwrPrompt;
 
   const canvasSummary = useMemo(
     () =>
@@ -64,6 +68,7 @@ export function CanvasAgentApp() {
     setHwrPrompt(action.prompt);
     setRecognitionText("");
     setRecognitionError(null);
+    setComposerDraft("");
 
     // Widget host loads FluxInk UI resource directly in-browser.
     // Avoid blocking on show_handwriting_canvas, which can exceed MCP connect timeouts.
@@ -173,25 +178,25 @@ export function CanvasAgentApp() {
   );
 
   const handleSendResultToComposer = useCallback((text: string) => {
-    const trimmed = text.trim();
+    const prepared = prepareRecognitionForComposer(text, hwrPromptRef.current);
 
-    if (!trimmed) {
+    if (!prepared) {
       return;
     }
 
     setCanvasDisplayMode("inline");
     setComposerDraft((current) => {
-      const trimmedCurrent = current.trimEnd();
+      const sanitizedCurrent = prepareRecognitionForComposer(current, hwrPromptRef.current);
 
-      if (!trimmedCurrent) {
-        return trimmed;
+      if (!sanitizedCurrent) {
+        return prepared;
       }
 
-      if (trimmedCurrent.includes(trimmed)) {
-        return trimmedCurrent;
+      if (sanitizedCurrent.includes(prepared)) {
+        return sanitizedCurrent;
       }
 
-      return `${trimmedCurrent}\n\n${trimmed}`;
+      return `${sanitizedCurrent}\n\n${prepared}`;
     });
     setComposerFocusSignal((current) => current + 1);
   }, []);

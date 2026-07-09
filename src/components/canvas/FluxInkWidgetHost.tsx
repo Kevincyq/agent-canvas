@@ -6,6 +6,10 @@ import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import { proxyMcpHostRequest } from "@/lib/mcp/host-proxy";
 import { extractRecognitionText } from "@/lib/mcp/recognition";
 import { extractTextFromContentBlocks } from "@/lib/mcp/widget-content";
+import {
+  isWidgetInitStructuredContent,
+  prepareRecognitionForComposer,
+} from "@/lib/canvas/composer";
 import type { HwrMode, HwrOpenResponse } from "@/types/agent";
 
 type WidgetStatus = "loading" | "ready" | "recognized" | "error";
@@ -255,7 +259,13 @@ export function FluxInkWidgetHost({
 
       const text = extractTextFromContentBlocks(content);
       deliverRecognizedText(text);
-      propsRef.current.onSendResultToComposer(text);
+
+      const prepared = prepareRecognitionForComposer(text, propsRef.current.prompt);
+
+      if (prepared) {
+        propsRef.current.onSendResultToComposer(prepared);
+      }
+
       return {};
     };
 
@@ -318,13 +328,28 @@ export function FluxInkWidgetHost({
             return {};
           }
 
+          const structured =
+            structuredContent && typeof structuredContent === "object" && !Array.isArray(structuredContent)
+              ? (structuredContent as Record<string, unknown>)
+              : undefined;
+
+          if (isWidgetInitStructuredContent(structured)) {
+            return {};
+          }
+
           const text =
             extractTextFromContentBlocks(content) ||
             extractRecognitionText(structuredContent) ||
             "";
 
           deliverRecognizedText(text);
-          propsRef.current.onSendResultToComposer(text);
+
+          const prepared = prepareRecognitionForComposer(text, propsRef.current.prompt);
+
+          if (prepared) {
+            propsRef.current.onSendResultToComposer(prepared);
+          }
+
           return {};
         };
 

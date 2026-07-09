@@ -13,7 +13,8 @@ tsconfig.tsbuildinfo
 .env.local
 .env.*.local
 
-# Local CI deploy keys (never commit)
+# Local deploy config and keys (never commit)
+deploy/deploy.env
 agent-canvas-staging-deploy
 agent-canvas-staging-deploy.pub
 

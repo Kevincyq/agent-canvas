@@ -1,162 +1,100 @@
 # Agent Canvas 预发环境部署指南
 
-本文档说明如何将 `agent-canvas-mvp` 通过 GitLab CI/CD 自动部署到独立的 demo / 预发服务器，并通过公网访问。
+GitLab 仅作**代码仓库**；因公司网络策略不允许 GitLab 与外部预发服务器互通，**不使用 GitLab CI/CD 自动部署**。
+
+预发发布改为：**本地一键脚本 → rsync 代码 → 服务器 docker build/up**。
 
 ## 架构概览
 
 ```text
-开发者 push → GitLab (eaglelab-gitlab.tcljd.com)
-  → validate (typecheck / lint)
-  → build Docker image → GitLab Container Registry
-  → SSH 到预发服务器 → docker compose pull/up
-  → 公网访问 http(s)://<STAGING_PUBLIC_URL>
+本地开发验证
+  → git push GitLab（版本管理）
+  → pnpm run deploy:staging（本地执行）
+  → rsync 代码到预发服务器
+  → 上传 .env.local 为服务器 .env
+  → 服务器 docker build + docker compose up
+  → https://dralk-demo.tcljd.com
 ```
 
-触发分支：
+## 预发环境信息
 
-- `main`
-- `feature/mcp-app-widget-host`
+| 项 | 值 |
+|----|-----|
+| 公网地址 | `https://dralk-demo.tcljd.com` |
+| 服务器 | `ubuntu@39.107.230.27` |
+| 部署目录 | `/home/ubuntu/agent_canvas` |
+| GitLab | `https://eaglelab-gitlab.tcljd.com/yangqin.chen/agent_canvas` |
 
-## 一次性准备（预发服务器）
+## 一次性准备
 
-### 1. 准备一台 Linux 服务器
-
-要求：
-
-- 可 SSH 访问
-- 已开放应用端口（默认 `3000`，或通过 Nginx 反代 `80/443`）
-- 建议 2 vCPU / 2GB RAM 以上
-
-### 2. 初始化 Docker 与部署目录
-
-在服务器上以 root 或 sudo 执行（从本仓库复制脚本到服务器，或在 clone 后的目录中运行）：
+### 1. 服务器初始化（若未完成）
 
 ```bash
-sudo DEPLOY_USER=deploy STAGING_DEPLOY_PATH=/opt/agent-canvas APP_PORT=3000 bash deploy/scripts/bootstrap-server.sh
+cd /home/ubuntu/agent_canvas
+sudo env DEPLOY_USER=ubuntu STAGING_DEPLOY_PATH=/home/ubuntu/agent_canvas APP_PORT=3000 \
+  bash deploy/scripts/bootstrap-server.sh
+
+sudo DOMAIN=dralk-demo.tcljd.com EMAIL=you@tcl.com \
+  bash deploy/scripts/setup-nginx-tls.sh
 ```
 
-### 3. 配置 deploy 用户 SSH 密钥
+### 2. 本地 SSH 密钥
 
-在本地生成专用于 CI 的密钥（不要用个人私钥）：
+确保本机有部署私钥，且公钥已写入服务器 `~/.ssh/authorized_keys`：
 
 ```bash
-ssh-keygen -t ed25519 -C "gitlab-ci-agent-canvas" -f ./agent-canvas-staging-deploy -N ""
+ssh -i ./agent-canvas-staging-deploy ubuntu@39.107.230.27
 ```
 
-将 `agent-canvas-staging-deploy.pub` 追加到服务器：
-
-```text
-/home/deploy/.ssh/authorized_keys
-```
-
-私钥 `agent-canvas-staging-deploy` 的内容稍后写入 GitLab CI 变量 `STAGING_SSH_PRIVATE_KEY`。
-
-### 4. （可选）Nginx 公网 HTTPS
-
-复制 `deploy/nginx/agent-canvas.conf.example` 到服务器 Nginx 配置目录，修改 `server_name` 与 upstream 端口，然后 reload Nginx。
-
-若使用 HTTPS，请在 GitLab 变量 `STAGING_PUBLIC_URL` 中填写完整 URL，例如 `https://agent-canvas-demo.yourcompany.com`。
-
-## GitLab CI/CD 变量配置
-
-进入 GitLab 项目：**Settings → CI/CD → Variables**，添加以下变量。
-
-### 必填（部署连通）
-
-| 变量名 | 说明 | 示例 | Masked |
-|--------|------|------|--------|
-| `STAGING_HOST` | 预发服务器 IP 或域名 | `10.1.2.3` | 否 |
-| `STAGING_USER` | SSH 用户 | `deploy` | 否 |
-| `STAGING_DEPLOY_PATH` | 部署目录 | `/opt/agent-canvas` | 否 |
-| `STAGING_SSH_PRIVATE_KEY` | CI 部署私钥（见下方说明） | File 或 Variable | Protect ✅，**不要 Mask** |
-
-私钥变量三种填法（任选其一）：
-
-**推荐：Type = File**
-
-1. Add variable → Key: `STAGING_SSH_PRIVATE_KEY`
-2. **Type 选 File**（不是 Variable）
-3. Value 粘贴私钥全文（含 `BEGIN`/`END` 行）
-4. 勾选 **Protect variable**，**不要勾选 Mask variable**
-5. CI 会把内容写入临时文件，脚本自动 `cp` 到 `~/.ssh/id_rsa`
-
-**备选：Type = Variable（不 Mask）**
-
-- 同上粘贴私钥全文，Type 选 Variable，只勾 Protect，不勾 Mask
-
-**备选：Base64 单行（可 Mask）**
-
-GitLab 的 Mask 不允许换行和空格，原始私钥无法 Mask。若必须 Mask，在本地生成单行 base64：
+### 3. 本地部署配置
 
 ```bash
-base64 < agent-canvas-staging-deploy | tr -d '\n'
+cp deploy/deploy.env.example deploy/deploy.env
+# 按需修改 STAGING_HOST / STAGING_USER / SSH_KEY 等
 ```
 
-GitLab 变量 Key 改为 `STAGING_SSH_PRIVATE_KEY_B64`，Value 粘贴这一整行，可勾选 Mask。
-| `STAGING_PUBLIC_URL` | 公网访问地址（用于 GitLab Environment） | `http://10.1.2.3:3000` | 否 |
+### 4. 本地环境变量
 
-### 必填（应用密钥）
+确保项目根目录有 `.env.local`（从 `.env.example` 复制并填写 `TURING_API_KEY` 等）。  
+部署时会上传到服务器作为 `.env`（**不会提交到 Git**）。
 
-| 变量名 | 说明 |
-|--------|------|
-| `TURING_API_KEY` | Turing 代理 API Key（与本地 `.env.local` 相同变量名） |
-
-### 可选（有默认值）
-
-| 变量名 | 默认值 |
-|--------|--------|
-| `TURING_API_BASE` | `https://live-turing.cn.llm.tcljd.com/api/v1` |
-| `TURING_MODEL` | `turing/gpt-5.5` |
-| `OPENAI_API` | `chat_completions` |
-| `MCP_SERVER_URL` | FluxInk MCP URL |
-| `MCP_AUTH_TOKEN` | 空 |
-| `MCP_TIMEOUT_MS` | `60000` |
-| `APP_PORT` | `3000` |
-| `PORTAL_FRAME_ANCESTOR_ORIGIN` | 空（允许任意 iframe 嵌入时留空） |
-
-GitLab 内置变量（通常无需手动配置）：
-
-- `CI_REGISTRY`
-- `CI_REGISTRY_USER`
-- `CI_REGISTRY_PASSWORD`
-- `CI_REGISTRY_IMAGE`
-
-### 启用 Container Registry
-
-确保项目 **Settings → General → Visibility** 下 Container Registry 已启用。  
-若公司 GitLab 禁用了 Registry，需要联系管理员开启，或改用 Shell Runner 在目标机构建（见文末备选方案）。
-
-## 日常发布流程
-
-1. 本地 dev 验证通过
-2. commit 并 push 到 GitLab：
+## 日常发布
 
 ```bash
+# 1. 本地验证
+pnpm run dev
+
+# 2. 提交并推送到 GitLab（仅版本管理）
+git add .
+git commit -m "your message"
 git push origin feature/mcp-app-widget-host
-# 或合并到 main 后
-git push origin main
+
+# 3. 本地一键部署到预发
+pnpm run deploy:staging
 ```
 
-3. 打开 GitLab **CI/CD → Pipelines**，确认三个阶段成功：
-   - `validate:typecheck`
-   - `build:image`
-   - `deploy:staging`
-4. 浏览器访问 `STAGING_PUBLIC_URL`，验证：
-   - `GET /api/health` 返回 `{ "ok": true }`
-   - 对话、画布、LLM、函数图等功能
+脚本 `deploy/scripts/local-deploy.sh` 会：
 
-## 手动部署
+1. `rsync` 同步代码（排除 `node_modules`、`.next`、`.env.local` 等）
+2. 将 `.env.local` + 生产运行时变量写入服务器 `.env`
+3. SSH 执行 `deploy/scripts/server-deploy.sh`（服务器上 `docker build` + `up`）
+4. 容器内健康检查
 
-非默认分支或需要重跑部署时，可在 Pipeline 中手动触发 `deploy:staging:manual` job（需已有 `build:image` 产物）。
-
-## 服务器上常用运维命令
+## 验证
 
 ```bash
-cd /opt/agent-canvas
-docker compose ps
-docker compose logs -f agent-canvas
-docker compose pull && docker compose up -d
-cat .env   # 检查运行时环境变量（勿泄露 Key）
+curl -s https://dralk-demo.tcljd.com/api/health
+```
+
+应返回 `{"ok":true,"service":"agent-canvas-mvp",...}`。
+
+## 服务器运维
+
+```bash
+ssh ubuntu@39.107.230.27
+cd /home/ubuntu/agent_canvas
+docker compose -f deploy/docker-compose.local.yml ps
+docker compose -f deploy/docker-compose.local.yml logs -f agent-canvas
 curl -s http://127.0.0.1:3000/api/health
 ```
 
@@ -164,18 +102,18 @@ curl -s http://127.0.0.1:3000/api/health
 
 | 现象 | 可能原因 | 处理 |
 |------|----------|------|
-| `build:image` 失败 | Runner 未启用 Docker-in-Docker | 联系 GitLab 管理员为 Runner 开启 `privileged` + dind |
-| `deploy:staging` SSH 失败 | 密钥/防火墙/用户权限 | 检查 `STAGING_SSH_PRIVATE_KEY`、`authorized_keys`、安全组 22 端口 |
-| 容器启动但 502 | 端口未开放或 Nginx 配置错误 | 检查 `APP_PORT`、防火墙、Nginx upstream |
-| LLM 不可用 | `TURING_API_KEY` 未配置 | 在 GitLab Variables 补全并重新 deploy |
-| 画布空白 | CSP 或 FluxInk 外网不可达 | 检查服务器出网与 MCP URL |
+| `pnpm run deploy:staging` SSH 失败 | 密钥/权限 | 检查 `deploy/deploy.env` 中 `SSH_KEY` 与服务器 `authorized_keys` |
+| `docker build` 失败 | 磁盘不足/依赖问题 | `df -h`，查看 build 日志 |
+| HTTPS 502 | 容器未启动 | `docker compose ps`，看 `agent-canvas` 日志 |
+| LLM 不可用 | `.env.local` 未配 Key | 补全 `TURING_API_KEY` 后重新 deploy |
+| 画布空白 | MCP/CSP | 检查服务器出网与 `MCP_SERVER_URL` |
 
-## 备选方案：目标机 Shell Runner
+## 关于 GitLab CI
 
-若公司 GitLab 无法使用 Container Registry + DinD，可在预发服务器安装 GitLab Shell Runner，并将 `.gitlab-ci.yml` 的 build/deploy 改为在目标机直接 `docker build`。当前默认方案是 **Registry + SSH deploy**，更适合独立 demo 服务器。
+`.gitlab-ci.yml` 已设置 `workflow: when: never`，不会自动跑 Pipeline。  
+若未来公司打通 GitLab 与预发机网络，可再启用 Registry/Runner 方案。
 
-## 安全说明（demo 环境）
+## 安全说明
 
-- 密钥只放在 GitLab CI Variables 与服务端 `.env`，不要提交到仓库
-- demo 环境建议使用专用 deploy 密钥，定期轮换
-- 公网暴露时建议加 Nginx + HTTPS + IP 白名单或 Basic Auth
+- `.env.local`、`deploy/deploy.env`、SSH 私钥**不要提交**到 Git
+- 部署脚本会把 `.env.local` 上传到服务器 `.env`，注意服务器访问权限
