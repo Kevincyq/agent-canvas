@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import "katex/dist/katex.min.css";
@@ -8,6 +8,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Canvas Agent MVP",
   description: "A Web UI agent with MCP integration and a handwriting canvas.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

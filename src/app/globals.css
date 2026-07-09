@@ -11,6 +11,11 @@
   --danger: #dc2626;
   --success: #059669;
   --warning: #d97706;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --touch-target: 44px;
 }
 
 * {
@@ -52,9 +57,13 @@ a {
 
 .app-shell {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   min-height: 620px;
-  padding: 16px;
+  padding:
+    calc(16px + var(--safe-area-top))
+    calc(16px + var(--safe-area-right))
+    calc(16px + var(--safe-area-bottom))
+    calc(16px + var(--safe-area-left));
 }
 
 .chat-panel,
@@ -125,7 +134,9 @@ a {
   gap: 10px;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 16px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .message-canvas-slot {
@@ -279,8 +290,13 @@ a {
 }
 
 .composer {
+  background: var(--panel);
   border-top: 1px solid var(--border);
-  padding: 16px;
+  padding:
+    12px
+    calc(16px + var(--safe-area-right))
+    calc(12px + var(--safe-area-bottom))
+    calc(16px + var(--safe-area-left));
 }
 
 .composer-input {
@@ -306,14 +322,14 @@ a {
   background: #e8edf5;
   border: 0;
   border-radius: 999px;
-  bottom: 12px;
+  bottom: 10px;
   color: #94a3b8;
   display: inline-flex;
-  height: 36px;
+  height: var(--touch-target);
   justify-content: center;
   position: absolute;
-  right: 12px;
-  width: 36px;
+  right: 10px;
+  width: var(--touch-target);
 }
 
 .composer-send.active {
@@ -387,6 +403,11 @@ a {
   flex-direction: column;
   height: 100dvh;
   inset: 0;
+  padding:
+    var(--safe-area-top)
+    var(--safe-area-right)
+    var(--safe-area-bottom)
+    var(--safe-area-left);
   position: fixed;
   width: 100vw;
   z-index: 50;
@@ -451,11 +472,13 @@ a {
   min-height: 480px;
   overflow: hidden;
   padding: 0;
+  touch-action: none;
 }
 
 .fluxink-widget-frame {
   background: #fff;
   display: block;
+  touch-action: none;
 }
 
 .canvas-meta {
@@ -526,13 +549,37 @@ a {
 
 @media (max-width: 900px) {
   .app-shell {
-    height: 100vh;
-    min-height: 100vh;
-    padding: 10px;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding:
+      calc(10px + var(--safe-area-top))
+      calc(10px + var(--safe-area-right))
+      calc(10px + var(--safe-area-bottom))
+      calc(10px + var(--safe-area-left));
+  }
+
+  .chat-panel {
+    border-radius: 14px;
+  }
+
+  .panel-header {
+    padding: 12px 14px;
+  }
+
+  .panel-header h1,
+  .panel-header h2 {
+    font-size: 18px;
+  }
+
+  .composer-input textarea {
+    font-size: 16px;
+    min-height: 112px;
+    padding: 14px calc(var(--touch-target) + 18px) 14px 14px;
   }
 
   .canvas-inline {
-    min-height: 500px;
+    min-height: min(58dvh, 720px);
+    width: 100%;
   }
 
   .structured-preview-header {
@@ -546,5 +593,24 @@ a {
 
   .structured-preview-actions button {
     flex: 1;
+    min-height: var(--touch-target);
   }
+}
+
+html.android-tablet .chat-panel {
+  max-width: none;
+}
+
+html.android-tablet .message.user,
+html.android-tablet .message.assistant {
+  max-width: 96%;
+}
+
+html.android-tablet .composer-input textarea {
+  font-size: 16px;
+}
+
+html.android-tablet .canvas-inline {
+  min-height: min(58dvh, 760px);
+  width: 100%;
 }

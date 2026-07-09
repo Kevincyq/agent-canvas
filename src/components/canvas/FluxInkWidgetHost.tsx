@@ -6,6 +6,7 @@ import {
   DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI,
   isRecognizeHandwritingToolName,
 } from "@/lib/mcp/constants";
+import { isAndroidTablet } from "@/lib/device/tablet";
 import { proxyMcpHostRequest } from "@/lib/mcp/host-proxy";
 import { extractRecognitionText } from "@/lib/mcp/recognition";
 import { extractTextFromContentBlocks } from "@/lib/mcp/widget-content";
@@ -180,11 +181,17 @@ function asCallToolResult(value: unknown, toolName?: string): Record<string, unk
 
 function resolveWidgetHeight(displayMode: "inline" | "fullscreen", reportedHeight?: number): number {
   if (displayMode === "fullscreen") {
-    return Math.max(480, window.innerHeight - 120);
+    return Math.max(480, window.innerHeight - 72);
   }
 
   if (typeof reportedHeight === "number" && reportedHeight > 0) {
     return Math.max(480, Math.min(reportedHeight, 920));
+  }
+
+  const isTabletLike = isAndroidTablet();
+
+  if (isTabletLike) {
+    return Math.max(560, Math.min(Math.round(window.innerHeight * 0.58), 920));
   }
 
   return 640;

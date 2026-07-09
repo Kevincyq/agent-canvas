@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
 import { createCanvasSummary } from "@/lib/canvas/actions";
 import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
+import { markAndroidTabletDocument, shouldPreferCanvasFullscreen } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import type {
@@ -48,6 +49,22 @@ export function CanvasAgentApp() {
 
   hwrPromptRef.current = hwrPrompt;
 
+  useEffect(() => {
+    markAndroidTabletDocument();
+
+    function handleViewportChange() {
+      markAndroidTabletDocument();
+    }
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+    };
+  }, []);
+
   const canvasSummary = useMemo(
     () =>
       createCanvasSummary(
@@ -62,7 +79,7 @@ export function CanvasAgentApp() {
     setCanvasOpen(true);
     setCanvasStatus("opening");
     setWidgetStatus("loading");
-    setCanvasDisplayMode("inline");
+    setCanvasDisplayMode(shouldPreferCanvasFullscreen() ? "fullscreen" : "inline");
     setHwrMode(action.mode);
     setHwrLanguage(action.language);
     setHwrPrompt(action.prompt);

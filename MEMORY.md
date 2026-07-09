@@ -53,6 +53,7 @@
 - Staging deploy is **local push** via `pnpm run deploy:staging` (`deploy/scripts/local-deploy.sh`): rsync repo → `ubuntu@39.107.230.27:/home/ubuntu/agent_canvas`, upload `.env.local` as server `.env`, `docker build` on server (`deploy/docker-compose.local.yml`). Public URL: `https://dralk-demo.tcljd.com`. GitLab CI disabled (`workflow: when: never`) due to company network policy blocking GitLab ↔ staging server.
 - Staging server hostname `el-openclaw-for-boss-demo`, public IP `39.107.230.27`, user `ubuntu`, deploy path `/home/ubuntu/agent_canvas`. Nginx + Let's Encrypt TLS configured for `dralk-demo.tcljd.com`.
 - FluxInk widget uses `http-first` recognition: browser POSTs to `${apiBaseUrl}/api/hwr/recognize`. FluxInk CORS only whitelists `http://localhost:3000` on `mcp.fluxink.ai`, so production domains must proxy via same-origin `/api/hwr/recognize` (pass `apiBaseUrl: window.location.origin` in widget host init). Bridge fallback expects `structuredContent: { success: true, result: {...} }` from `oncalltool`.
+- Tablet/stylus UX: viewport-fit cover + safe-area CSS + 44px touch targets apply globally; Android-tablet-only behavior via `html.android-tablet` (`isAndroidTablet()` in `src/lib/device/tablet.ts`): auto fullscreen canvas on open, wider chat, taller inline canvas. FluxInk widget handles pen/touch internally.
 
 ## Open Questions
 
