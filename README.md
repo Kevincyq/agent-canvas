@@ -45,7 +45,7 @@ ASR_LANGUAGE_CODE=zh
 MCP_SERVER_URL=https://mcp.fluxink.ai/servers/d706699b03524ba6aa84423954c43f3f/mcp
 MCP_SERVER_NAME=FluxInk TCL MCP
 MCP_AUTH_TOKEN=
-PORTAL_FRAME_ANCESTOR_ORIGIN=
+PORTAL_FRAME_ANCESTOR_ORIGIN=https://ai.eaglelab.tcl.com https://ai.tcl.com
 ```
 
 `TURING_API_KEY` 未配置时，`/api/agent` 使用本地 fallback：仍可打开画布并验证 FluxInk MCP 识别，但不能完成云端 AskAI 问答。
@@ -89,7 +89,7 @@ PORTAL_FRAME_ANCESTOR_ORIGIN=
 ></iframe>
 ```
 
-生产环境需要把 `PORTAL_FRAME_ANCESTOR_ORIGIN` 设置为 Portal origin，确保 CSP 允许被该 Portal 嵌入。
+生产环境需要把 `PORTAL_FRAME_ANCESTOR_ORIGIN` 设置为 Portal origin，确保 CSP 允许被该 Portal 嵌入；多个 origin 使用空格或逗号分隔。Docker 构建阶段未注入该变量时，预发默认允许 `https://ai.eaglelab.tcl.com` 和 `https://ai.tcl.com`。
 
 ## 安全边界
 

@@ -1,9 +1,25 @@
 /** @type {import('next').NextConfig} */
+const defaultPortalFrameAncestors = [
+  "https://ai.eaglelab.tcl.com",
+  "https://ai.tcl.com",
+];
+
+function getPortalFrameAncestors() {
+  const configuredOrigins = process.env.PORTAL_FRAME_ANCESTOR_ORIGIN
+    ?.split(/[\s,]+/)
+    .map((origin) => origin.trim())
+    .filter((origin) => /^https?:\/\/[^/]+$/.test(origin));
+
+  return configuredOrigins?.length
+    ? configuredOrigins
+    : defaultPortalFrameAncestors;
+}
+
 const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
   async headers() {
-    const portalOrigin = process.env.PORTAL_FRAME_ANCESTOR_ORIGIN;
+    const portalFrameAncestors = getPortalFrameAncestors();
 
     return [
       {
@@ -19,7 +35,7 @@ const nextConfig = {
               "font-src 'self' data: https://mcp.fluxink.ai https://*.fluxink.ai",
               "connect-src 'self' https://*.api.cognitive.microsoft.com wss://*.stt.speech.microsoft.com https://mcp.fluxink.ai https://*.fluxink.ai https://unpkg.com",
               "frame-src 'self' blob: data:",
-              portalOrigin ? `frame-ancestors 'self' ${portalOrigin}` : "frame-ancestors 'self'",
+              `frame-ancestors 'self' ${portalFrameAncestors.join(" ")}`,
             ].join("; "),
           },
         ],
