@@ -19,6 +19,7 @@ const AGENT_INSTRUCTIONS = `
 5. 用户说“新开画布”“重新手写”“再开一个画布”时，可以再次返回 open_handwriting_canvas，并 force_new=true。
 6. 不要编造或调用任意 MCP 工具名。
 7. 用户要函数图像、数据图表时，返回 render_chart action；不要输出 Python/Matplotlib 代码，除非用户明确要求代码。
+8. 如果 prompt 里提供 attachments（name 为 attached file），则把 voice_transcript 附件内容当作用户语音说明；不要说文件缺失。
 
 输出必须符合：
 {
@@ -54,6 +55,7 @@ mode 规则：
 - 用户要函数图像：返回 render_chart，kind=function，并给出合理 xDomain/yDomain 与 expressions。
 - 用户要折线/柱状/散点图：返回 render_chart，kind=line|bar|scatter，填充 series；message 中可文字解读数据。
 - 结合 recentHistory 理解追问，不需要维护多个 thread。
+- 处理手写 + 语音组合时：手写结构化内容是主问题，voice_transcript 附件是补充说明或任务要求；两者冲突时先指出冲突再给出最合理处理。
 `;
 
 export async function runCanvasAgent(request: AgentRequest): Promise<AgentResponse> {

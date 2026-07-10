@@ -181,7 +181,7 @@ function asCallToolResult(value: unknown, toolName?: string): Record<string, unk
 
 function resolveWidgetHeight(displayMode: "inline" | "fullscreen", reportedHeight?: number): number {
   if (displayMode === "fullscreen") {
-    return Math.max(480, window.innerHeight - 72);
+    return Math.max(320, window.innerHeight - 240);
   }
 
   if (typeof reportedHeight === "number" && reportedHeight > 0) {
@@ -588,7 +588,11 @@ export function FluxInkWidgetHost({
 
   return (
     <section
-      className={displayMode === "fullscreen" ? "canvas-panel canvas-fullscreen widget-host" : "canvas-panel canvas-inline widget-host"}
+      className={
+        displayMode === "fullscreen"
+          ? "canvas-panel canvas-fullscreen-widget widget-host"
+          : "canvas-panel canvas-inline widget-host"
+      }
       aria-label="FluxInk MCP App widget"
     >
       {recognitionError ? (
@@ -597,13 +601,24 @@ export function FluxInkWidgetHost({
         </div>
       ) : null}
 
-      <div className="widget-shell" style={{ minHeight: widgetHeight }}>
+      <div
+        className="widget-shell"
+        style={
+          displayMode === "fullscreen"
+            ? { flex: 1, minHeight: 0 }
+            : { minHeight: widgetHeight }
+        }
+      >
         <iframe
           ref={iframeRef}
           title="FluxInk handwriting widget"
           className="fluxink-widget-frame"
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
-          style={{ width: "100%", height: widgetHeight, border: 0 }}
+          style={
+            displayMode === "fullscreen"
+              ? { width: "100%", height: "100%", border: 0 }
+              : { width: "100%", height: widgetHeight, border: 0 }
+          }
         />
       </div>
     </section>

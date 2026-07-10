@@ -11,6 +11,24 @@ export const PointSchema = z.object({
 export const HwrModeSchema = z.enum(["general", "structure"]);
 export const HwrRecognitionModeSchema = z.enum(["text", "math", "chemical", "structure"]);
 
+export const AgentAttachmentSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.enum(["voice_transcript"]).default("voice_transcript"),
+  mimeType: z.string().min(1).default("text/plain"),
+  content: z.string(),
+  createdAt: z.string().optional(),
+  metadata: z
+    .object({
+      sessionId: z.string().optional(),
+      startMs: z.number().nonnegative().optional(),
+      endMs: z.number().nonnegative().optional(),
+      segmentCount: z.number().int().nonnegative().optional(),
+      source: z.string().optional(),
+    })
+    .default({}),
+});
+
 export const CanvasOperationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("add_text"),
@@ -71,6 +89,7 @@ export const AgentRequestSchema = z.object({
       selectedElementId: z.string().nullable(),
     })
     .optional(),
+  attachments: z.array(AgentAttachmentSchema).default([]),
 });
 
 export const AgentResponseSchema = z.object({
@@ -132,6 +151,7 @@ export type Point = z.infer<typeof PointSchema>;
 export type HwrMode = z.infer<typeof HwrModeSchema>;
 export type HwrRecognitionMode = z.infer<typeof HwrRecognitionModeSchema>;
 export type CanvasOperation = z.infer<typeof CanvasOperationSchema>;
+export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
 export type AgentAction = z.infer<typeof AgentActionSchema>;
 export type AgentRequest = z.infer<typeof AgentRequestSchema>;
 export type AgentResponse = z.infer<typeof AgentResponseSchema>;

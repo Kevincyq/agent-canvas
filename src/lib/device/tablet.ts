@@ -27,10 +27,6 @@ export function isAndroidTablet(): boolean {
   return minTabletWidth && (!uaLooksLikePhone || window.matchMedia("(min-width: 768px)").matches);
 }
 
-export function shouldPreferCanvasFullscreen(): boolean {
-  return isAndroidTablet();
-}
-
 export function markAndroidTabletDocument(): void {
   if (typeof document === "undefined") {
     return;

@@ -4,12 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
+import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/voice/VoiceRecorder";
 import { createCanvasSummary } from "@/lib/canvas/actions";
 import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
-import { markAndroidTabletDocument, shouldPreferCanvasFullscreen } from "@/lib/device/tablet";
+import { markAndroidTabletDocument } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
+import { createVoiceTranscriptAttachment, type VoiceTranscriptPayload } from "@/lib/voice/timeline";
+import {
+  shouldSendVoiceAttachment,
+  stripVoiceAttachmentReference,
+} from "@/lib/voice/composer-sync";
 import type {
+  AgentAttachment,
   AgentAction,
   AgentResponse,
   ChatMessage,
@@ -45,9 +52,15 @@ export function CanvasAgentApp() {
   const [composerDraft, setComposerDraft] = useState("");
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
   const [widgetSessionId, setWidgetSessionId] = useState(0);
+  const [voiceSessionId, setVoiceSessionId] = useState(() => crypto.randomUUID());
+  const [voiceAttachment, setVoiceAttachment] = useState<AgentAttachment | null>(null);
   const hwrPromptRef = useRef("");
+  const voiceAttachmentRef = useRef<AgentAttachment | null>(null);
+  const voiceRecorderRef = useRef<VoiceRecorderHandle | null>(null);
+  const canvasSessionStartedAtRef = useRef(0);
 
   hwrPromptRef.current = hwrPrompt;
+  voiceAttachmentRef.current = voiceAttachment;
 
   useEffect(() => {
     markAndroidTabletDocument();
@@ -75,17 +88,30 @@ export function CanvasAgentApp() {
     [canvasOpen],
   );
 
+  const getCanvasElapsedMs = useCallback(() => {
+    if (canvasSessionStartedAtRef.current <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.round(performance.now() - canvasSessionStartedAtRef.current));
+  }, []);
+
   async function openHandwritingCanvas(action: Extract<AgentAction, { type: "open_handwriting_canvas" }>) {
+    const nextVoiceSessionId = crypto.randomUUID();
+
     setCanvasOpen(true);
     setCanvasStatus("opening");
     setWidgetStatus("loading");
-    setCanvasDisplayMode(shouldPreferCanvasFullscreen() ? "fullscreen" : "inline");
+    setCanvasDisplayMode("inline");
     setHwrMode(action.mode);
     setHwrLanguage(action.language);
     setHwrPrompt(action.prompt);
     setRecognitionText("");
     setRecognitionError(null);
     setComposerDraft("");
+    setVoiceSessionId(nextVoiceSessionId);
+    setVoiceAttachment(null);
+    canvasSessionStartedAtRef.current = performance.now();
 
     // Widget host loads FluxInk UI resource directly in-browser.
     // Avoid blocking on show_handwriting_canvas, which can exceed MCP connect timeouts.
@@ -109,10 +135,12 @@ export function CanvasAgentApp() {
   }
 
   async function handleSend(message: string) {
+    const cleanedMessage = stripVoiceAttachmentReference(message);
+
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: message,
+      content: cleanedMessage,
     };
 
     const nextMessages = [...messages, userMessage];
@@ -120,13 +148,17 @@ export function CanvasAgentApp() {
     setBusy(true);
 
     try {
+      const outboundAttachments = shouldSendVoiceAttachment(voiceAttachmentRef.current)
+        ? [voiceAttachmentRef.current!]
+        : [];
+
       const response = await fetch("/api/agent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message,
+          message: cleanedMessage,
           history: nextMessages
             .filter((item) => item.role === "user" || item.role === "assistant")
             .slice(-8)
@@ -135,6 +167,7 @@ export function CanvasAgentApp() {
               content: item.content,
             })),
           canvas: canvasSummary,
+          attachments: outboundAttachments,
         }),
       });
 
@@ -157,6 +190,7 @@ export function CanvasAgentApp() {
         setCanvasAfterMessageId(assistantMessage.id);
       }
       await applyActions(payload.actions);
+      setVoiceAttachment(null);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -195,7 +229,16 @@ export function CanvasAgentApp() {
   );
 
   const handleSendResultToComposer = useCallback((text: string) => {
-    const prepared = prepareRecognitionForComposer(text, hwrPromptRef.current);
+    if (voiceRecorderRef.current?.isRecording()) {
+      const payload = voiceRecorderRef.current.stopAndFlush();
+      const attachment = payload ? createVoiceTranscriptAttachment(payload) : voiceAttachmentRef.current;
+      if (attachment) {
+        setVoiceAttachment(attachment);
+        voiceAttachmentRef.current = attachment;
+      }
+    }
+
+    const prepared = stripVoiceAttachmentReference(prepareRecognitionForComposer(text, hwrPromptRef.current));
 
     if (!prepared) {
       return;
@@ -203,7 +246,9 @@ export function CanvasAgentApp() {
 
     setCanvasDisplayMode("inline");
     setComposerDraft((current) => {
-      const sanitizedCurrent = prepareRecognitionForComposer(current, hwrPromptRef.current);
+      const sanitizedCurrent = stripVoiceAttachmentReference(
+        prepareRecognitionForComposer(current, hwrPromptRef.current),
+      );
 
       if (!sanitizedCurrent) {
         return prepared;
@@ -218,20 +263,42 @@ export function CanvasAgentApp() {
     setComposerFocusSignal((current) => current + 1);
   }, []);
 
+  const handleVoiceTranscriptChange = useCallback((payload: VoiceTranscriptPayload) => {
+    const attachment = createVoiceTranscriptAttachment(payload);
+    setVoiceAttachment(attachment);
+    voiceAttachmentRef.current = attachment;
+  }, []);
+
   const canvasSlot = canvasOpen ? (
-    <FluxInkWidgetHost
-      key={widgetSessionId}
-      displayMode={canvasDisplayMode}
-      mode={hwrMode}
-      language={hwrLanguage}
-      prompt={hwrPrompt}
-      uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
-      openResult={hwrOpenResult}
-      recognitionError={recognitionError}
-      onDisplayModeChange={setCanvasDisplayMode}
-      onRecognitionChange={stableWidgetRecognitionChange}
-      onSendResultToComposer={handleSendResultToComposer}
-    />
+    <div
+      className={
+        canvasDisplayMode === "fullscreen"
+          ? "canvas-session canvas-session-fullscreen"
+          : "canvas-session canvas-session-inline"
+      }
+    >
+      <FluxInkWidgetHost
+        key={widgetSessionId}
+        displayMode={canvasDisplayMode}
+        mode={hwrMode}
+        language={hwrLanguage}
+        prompt={hwrPrompt}
+        uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
+        openResult={hwrOpenResult}
+        recognitionError={recognitionError}
+        onDisplayModeChange={setCanvasDisplayMode}
+        onRecognitionChange={stableWidgetRecognitionChange}
+        onSendResultToComposer={handleSendResultToComposer}
+      />
+      <VoiceRecorder
+        ref={voiceRecorderRef}
+        sessionId={voiceSessionId}
+        disabled={busy}
+        getElapsedMs={getCanvasElapsedMs}
+        onTranscriptChange={handleVoiceTranscriptChange}
+        compact={canvasDisplayMode === "fullscreen"}
+      />
+    </div>
   ) : null;
 
   return (
@@ -241,6 +308,7 @@ export function CanvasAgentApp() {
         canvasAfterMessageId={canvasAfterMessageId}
         draft={composerDraft}
         focusComposerSignal={composerFocusSignal}
+        voiceAttachment={voiceAttachment}
         messages={messages}
         busy={busy}
         onDraftChange={setComposerDraft}

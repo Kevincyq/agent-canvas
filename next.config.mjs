@@ -17,7 +17,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://mcp.fluxink.ai https://*.fluxink.ai",
               "img-src 'self' data: blob: https://mcp.fluxink.ai https://*.fluxink.ai",
               "font-src 'self' data: https://mcp.fluxink.ai https://*.fluxink.ai",
-              "connect-src 'self' https://mcp.fluxink.ai https://*.fluxink.ai https://unpkg.com",
+              "connect-src 'self' https://*.api.cognitive.microsoft.com wss://*.stt.speech.microsoft.com https://mcp.fluxink.ai https://*.fluxink.ai https://unpkg.com",
               "frame-src 'self' blob: data:",
               portalOrigin ? `frame-ancestors 'self' ${portalOrigin}` : "frame-ancestors 'self'",
             ].join("; "),

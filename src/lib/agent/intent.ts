@@ -94,6 +94,14 @@ export function buildAgentPrompt(request: AgentRequest): string {
       userMessage: request.message,
       recentHistory: request.history,
       canvas: request.canvas,
+      attachments: request.attachments.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        content: attachment.content,
+        metadata: attachment.metadata,
+      })),
       outputContract: {
         message: "Short natural-language response for the user in Chinese.",
         actions: [

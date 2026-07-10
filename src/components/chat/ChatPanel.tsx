@@ -6,7 +6,8 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { PlotCard } from "@/components/chart/PlotCard";
-import type { ChatMessage } from "@/types/agent";
+import { VOICE_ATTACHMENT_NAME } from "@/lib/voice/composer-sync";
+import type { ChatMessage, AgentAttachment } from "@/types/agent";
 
 type ChatPanelProps = {
   messages: ChatMessage[];
@@ -15,6 +16,7 @@ type ChatPanelProps = {
   canvasSlot?: ReactNode;
   draft: string;
   focusComposerSignal: number;
+  voiceAttachment?: AgentAttachment | null;
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
 };
@@ -26,6 +28,7 @@ export function ChatPanel({
   canvasSlot,
   draft,
   focusComposerSignal,
+  voiceAttachment = null,
   onDraftChange,
   onSend,
 }: ChatPanelProps) {
@@ -119,6 +122,12 @@ export function ChatPanel({
             </svg>
           </button>
         </div>
+        {voiceAttachment?.content.trim() ? (
+          <div className="composer-attachment" aria-label="语音附件预览">
+            <p className="composer-attachment-label">{VOICE_ATTACHMENT_NAME} · 语音转写</p>
+            <p className="composer-attachment-preview">{voiceAttachment.content}</p>
+          </div>
+        ) : null}
       </form>
     </section>
   );
