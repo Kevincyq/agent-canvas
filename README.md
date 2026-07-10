@@ -1,6 +1,6 @@
 # Canvas Agent MVP
 
-一个可嵌入公司 Portal 的 Canvas Agent MCP demo。Web UI 提供 AI Chat、FluxInk 手写画布和语音说明录入，服务端 API 使用 OpenAI Agents JS 做意图识别，并通过 MCP client 连接 TCL FluxInk MCP server。当前 demo 聚焦一条链路：用户在 Chat 中通过对话唤起手写画布，画布嵌入到对应对话流里，停笔后由 FluxInk widget 自动识别结构化结果；语音录音由同源 API 提交到云端 ASR，转写内容作为 `attached file1` 附件，手写结构化内容作为 AskAI prompt 发送给云端 AI。
+一个可嵌入公司 Portal 的 Canvas Agent MCP demo。Web UI 提供 AI Chat、FluxInk 手写画布和语音说明录入，服务端 API 使用 OpenAI Agents JS 做意图识别，并通过 MCP client 连接 TCL FluxInk MCP server。当前 demo 聚焦一条链路：用户在 Chat 中通过对话唤起手写画布，画布嵌入到对应对话流里，停笔后由 FluxInk widget 自动识别结构化结果；语音录音由浏览器 Azure Speech SDK 实时转写，转写内容作为 `attached file` 附件，手写结构化内容作为 AskAI prompt 发送给云端 AI。
 
 ## 技术栈
 
@@ -8,14 +8,14 @@
 - OpenAI Agents JS
 - MCP Streamable HTTP，SSE 作为探测兜底
 - FluxInk MCP App widget 手写画布，由浏览器 MCP Apps Host 嵌入 `ui://fluxink/fluxink-hwr-canvas.html`
-- 浏览器 `MediaRecorder` 录音 + 服务端云端 ASR 转写
+- Azure Speech SDK 浏览器实时 ASR + 服务端 STS token 签发
 
 ## 目录结构
 
 ```text
 src/app/page.tsx                    Portal iframe 入口页面
 src/app/api/agent/route.ts          Agent 对话 API
-src/app/api/asr/transcribe/route.ts 语音录音云端 ASR 转写 API
+src/app/api/asr/realtime/session/route.ts Azure Speech STS token 签发
 src/app/api/mcp/inspect/route.ts    MCP 连通性探测 API
 src/app/api/mcp/host/route.ts       MCP Apps Host JSON-RPC proxy
 src/app/api/mcp/ui-resource/route.ts FluxInk widget UI resource proxy
@@ -39,11 +39,9 @@ src/types/agent.ts                  前后端共享协议
 TURING_API_BASE=https://live-turing.cn.llm.tcljd.com/api/v1
 TURING_API_KEY=
 TURING_MODEL=turing/gpt-5.5
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-ASR_MODEL=gpt-realtime-whisper
+AZURE_STT_KEY=
+AZURE_STT_REGION=eastasia
 ASR_LANGUAGE_CODE=zh
-ASR_REALTIME_DELAY=low
 MCP_SERVER_URL=https://mcp.fluxink.ai/servers/d706699b03524ba6aa84423954c43f3f/mcp
 MCP_SERVER_NAME=FluxInk TCL MCP
 MCP_AUTH_TOKEN=
@@ -51,13 +49,12 @@ PORTAL_FRAME_ANCESTOR_ORIGIN=
 ```
 
 `TURING_API_KEY` 未配置时，`/api/agent` 使用本地 fallback：仍可打开画布并验证 FluxInk MCP 识别，但不能完成云端 AskAI 问答。
-云端实时 ASR 使用 **独立的** `OPENAI_API_KEY`（或 `ASR_API_KEY`）和 `gpt-realtime-whisper`，通过 `POST /api/asr/realtime/session` 创建短时 token，浏览器以 WebSocket 推送 PCM 音频并接收流式转写。`TURING_API_KEY` 不再用于 ASR。
+云端实时 ASR 使用 Azure Speech Services（`AZURE_STT_KEY` + `AZURE_STT_REGION`）。服务端 `POST /api/asr/realtime/session` 签发短时 STS token，浏览器通过 Azure Speech SDK 直连麦克风做连续识别。
 
 ## API
 
 - `POST /api/agent`：接收用户消息、历史对话和画布摘要。手写/画布意图返回 `open_handwriting_canvas` action；普通 AskAI 问答在 `message` 中直接返回云端模型回答。
-- `POST /api/asr/realtime/session`：创建 OpenAI Realtime 转写短时 token（`gpt-realtime-whisper`）。
-- `POST /api/asr/transcribe`：非 realtime 模型的离线文件转写（batch ASR 备用）。
+- `POST /api/asr/realtime/session`：签发 Azure Speech STS token（实时 ASR）。
 - `POST /api/mcp/host`：MCP Apps Host allowlist JSON-RPC proxy，用于 FluxInk widget 调用 tools/resources。
 - `GET /api/mcp/ui-resource`：读取 FluxInk MCP App widget HTML resource。
 - `POST /api/hwr/recognize`：FluxInk widget 的 same-origin recognition proxy，用于规避生产域名 CORS 限制。
@@ -69,9 +66,9 @@ PORTAL_FRAME_ANCESTOR_ORIGIN=
 - 用户在对话框输入“打开手写画布”“我想手写数学公式”等意图。
 - Agent 返回回复后，在这条回复下方嵌入手写画布，而不是切到独立工作区。
 - 用户书写时不需要手动提交识别；FluxInk widget 在停笔后自动识别并通过 AppBridge 把结构化结果回填到底部 AskAI 输入框。
-- 用户可在画布下方录入语音说明；浏览器通过 OpenAI Realtime API 做云端流式 ASR，转写文本生成 `attached file1` 附件。
+- 用户可在画布下方录入语音说明；浏览器通过 Azure Speech SDK 做实时 ASR，转写文本作为 `attached file` 附件预览。
 - 画布支持全屏和回到对话两种显示态；回到对话后仍位于触发它的那条消息下方，用户可以继续聊天。
-- AskAI 输入框显示手写结构化内容；如果已有语音转写，会追加 `语音说明：attached file1`。发送时，手写内容作为 prompt，语音转写作为附件上下文传给云端 AI。
+- AskAI 输入框只显示手写结构化内容；语音转写在附件预览区展示。发送时，手写内容作为 prompt，语音转写作为 attachment 传给云端 AI。
 - 用户可以在 AskAI 输入框继续补充“帮我解这道题”“转换成 JSON”等任务，再点击发送给云端 AI；输入框 Enter 发送，Shift+Enter 换行。
 
 ## FluxInk 边界
