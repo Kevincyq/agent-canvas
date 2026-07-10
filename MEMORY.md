@@ -59,6 +59,7 @@
 - On 2026-07-10, direct probes against the configured `live-turing` endpoint returned HTTP 503 / `code=2500` for both a structurally valid WAV and a real synthesized Chinese-speech WAV, including with `language_code=cn`. This isolates the failure to the Turing/Tingwu service path rather than MediaRecorder audio. Retry `2500` with bounded exponential backoff, preserve browser transcript fallback, and expose a localized message plus `trace_id`; service recovery still requires the platform team.
 - Time sync model for pen + voice in the web demo: use a shared canvas-session monotonic clock (`performance.now()` origin) and store capture `startMs`/`endMs` on voice chunks/ASR segments. Do not align by ASR result return time because MCP/HWR and ASR latencies differ.
 - Voice transcript UX (2026-07-10): transcript stays as composer attachment preview (`attached file`, id `file`), not in AskAI text input. Handwriting canvas Send auto-stops recording via `VoiceRecorder.stopAndFlush()` and attaches flushed transcript. Legacy `语音说明：attached file1` lines are stripped from composer on send/sync.
+- Tablet portrait interaction (2026-07-10): use a 600–1024px portrait breakpoint for the browser layout instead of relying only on Android user-agent detection. After FluxInk Send moves recognized handwriting into the AskAI composer, keep the widget session mounted but collapse it into a compact summary card, smoothly scroll to/focus the composer, and allow the user to reopen the same canvas session.
 
 ## Open Questions
 

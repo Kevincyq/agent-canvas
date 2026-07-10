@@ -43,6 +43,7 @@ export function CanvasAgentApp() {
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
   const [widgetStatus, setWidgetStatus] = useState<WidgetStatus>("loading");
   const [canvasDisplayMode, setCanvasDisplayMode] = useState<CanvasDisplayMode>("inline");
+  const [canvasCollapsed, setCanvasCollapsed] = useState(false);
   const [hwrMode, setHwrMode] = useState<HwrMode>("general");
   const [hwrLanguage, setHwrLanguage] = useState("");
   const [hwrPrompt, setHwrPrompt] = useState("");
@@ -103,6 +104,7 @@ export function CanvasAgentApp() {
     setCanvasStatus("opening");
     setWidgetStatus("loading");
     setCanvasDisplayMode("inline");
+    setCanvasCollapsed(false);
     setHwrMode(action.mode);
     setHwrLanguage(action.language);
     setHwrPrompt(action.prompt);
@@ -245,6 +247,7 @@ export function CanvasAgentApp() {
     }
 
     setCanvasDisplayMode("inline");
+    setCanvasCollapsed(true);
     setComposerDraft((current) => {
       const sanitizedCurrent = stripVoiceAttachmentReference(
         prepareRecognitionForComposer(current, hwrPromptRef.current),
@@ -269,35 +272,64 @@ export function CanvasAgentApp() {
     voiceAttachmentRef.current = attachment;
   }, []);
 
+  const handleCanvasDisplayModeChange = useCallback((mode: CanvasDisplayMode) => {
+    setCanvasDisplayMode(mode);
+    if (mode === "fullscreen") {
+      setCanvasCollapsed(false);
+    }
+  }, []);
+
   const canvasSlot = canvasOpen ? (
     <div
       className={
         canvasDisplayMode === "fullscreen"
           ? "canvas-session canvas-session-fullscreen"
-          : "canvas-session canvas-session-inline"
+          : canvasCollapsed
+            ? "canvas-session canvas-session-inline canvas-session-collapsed"
+            : "canvas-session canvas-session-inline"
       }
     >
-      <FluxInkWidgetHost
-        key={widgetSessionId}
-        displayMode={canvasDisplayMode}
-        mode={hwrMode}
-        language={hwrLanguage}
-        prompt={hwrPrompt}
-        uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
-        openResult={hwrOpenResult}
-        recognitionError={recognitionError}
-        onDisplayModeChange={setCanvasDisplayMode}
-        onRecognitionChange={stableWidgetRecognitionChange}
-        onSendResultToComposer={handleSendResultToComposer}
-      />
-      <VoiceRecorder
-        ref={voiceRecorderRef}
-        sessionId={voiceSessionId}
-        disabled={busy}
-        getElapsedMs={getCanvasElapsedMs}
-        onTranscriptChange={handleVoiceTranscriptChange}
-        compact={canvasDisplayMode === "fullscreen"}
-      />
+      {canvasCollapsed ? (
+        <div className="canvas-collapsed-summary" role="status">
+          <div className="canvas-collapsed-copy">
+            <span className="canvas-collapsed-icon" aria-hidden="true">✓</span>
+            <div>
+              <strong>手写内容已转到 AskAI 输入框</strong>
+              <p>{recognitionText.trim() || "识别结果已放入下方输入框，可继续补充要求。"}</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setCanvasCollapsed(false)}>
+            重新展开
+          </button>
+        </div>
+      ) : null}
+      <div
+        className={canvasCollapsed ? "canvas-session-content is-collapsed" : "canvas-session-content"}
+        aria-hidden={canvasCollapsed}
+        inert={canvasCollapsed}
+      >
+        <FluxInkWidgetHost
+          key={widgetSessionId}
+          displayMode={canvasDisplayMode}
+          mode={hwrMode}
+          language={hwrLanguage}
+          prompt={hwrPrompt}
+          uiResourceUri={DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI}
+          openResult={hwrOpenResult}
+          recognitionError={recognitionError}
+          onDisplayModeChange={handleCanvasDisplayModeChange}
+          onRecognitionChange={stableWidgetRecognitionChange}
+          onSendResultToComposer={handleSendResultToComposer}
+        />
+        <VoiceRecorder
+          ref={voiceRecorderRef}
+          sessionId={voiceSessionId}
+          disabled={busy}
+          getElapsedMs={getCanvasElapsedMs}
+          onTranscriptChange={handleVoiceTranscriptChange}
+          compact={canvasDisplayMode === "fullscreen"}
+        />
+      </div>
     </div>
   ) : null;
 

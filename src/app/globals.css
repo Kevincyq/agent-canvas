@@ -26,6 +26,7 @@ html,
 body {
   height: 100%;
   margin: 0;
+  overscroll-behavior: none;
 }
 
 body {
@@ -136,6 +137,9 @@ a {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 16px;
+  scroll-behavior: smooth;
+  scroll-padding-block: 16px;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -299,6 +303,7 @@ a {
     calc(16px + var(--safe-area-right))
     calc(12px + var(--safe-area-bottom))
     calc(16px + var(--safe-area-left));
+  flex-shrink: 0;
 }
 
 .composer-input {
@@ -428,6 +433,83 @@ a {
   display: grid;
   gap: 10px;
   width: 100%;
+}
+
+.canvas-session-content {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.canvas-session-content.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.canvas-session-collapsed {
+  max-width: 760px;
+}
+
+.canvas-collapsed-summary {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-height: 76px;
+  padding: 12px 14px;
+}
+
+.canvas-collapsed-copy {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.canvas-collapsed-icon {
+  align-items: center;
+  background: rgba(5, 150, 105, 0.12);
+  border-radius: 999px;
+  color: var(--success);
+  display: inline-flex;
+  flex: 0 0 32px;
+  font-weight: 800;
+  height: 32px;
+  justify-content: center;
+}
+
+.canvas-collapsed-copy strong {
+  display: block;
+  font-size: 14px;
+}
+
+.canvas-collapsed-copy p {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 3px 0 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.canvas-collapsed-summary button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-weight: 700;
+  min-height: var(--touch-target);
+  padding: 8px 12px;
 }
 
 .canvas-session-inline {
@@ -844,4 +926,66 @@ html.android-tablet .composer-input textarea {
 html.android-tablet .canvas-inline {
   min-height: min(58dvh, 760px);
   width: 100%;
+}
+
+@media (min-width: 600px) and (max-width: 1024px) and (orientation: portrait) {
+  .app-shell {
+    min-height: 100dvh;
+    padding:
+      calc(8px + var(--safe-area-top))
+      calc(8px + var(--safe-area-right))
+      calc(8px + var(--safe-area-bottom))
+      calc(8px + var(--safe-area-left));
+  }
+
+  .chat-panel {
+    border-radius: 12px;
+    max-width: none;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+  }
+
+  .message-list {
+    gap: 8px;
+    padding: 12px 14px;
+    scroll-padding-block: 12px;
+  }
+
+  .message.user,
+  .message.assistant {
+    max-width: 96%;
+  }
+
+  .canvas-inline {
+    min-height: min(52dvh, 660px);
+    width: 100%;
+  }
+
+  .composer {
+    padding: 10px 14px calc(10px + var(--safe-area-bottom));
+  }
+
+  .composer-input textarea {
+    min-height: 88px;
+    max-height: 24dvh;
+  }
+}
+
+@media (max-width: 640px) {
+  .canvas-collapsed-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .canvas-collapsed-summary button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-list {
+    scroll-behavior: auto;
+  }
 }

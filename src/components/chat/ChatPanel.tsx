@@ -33,6 +33,7 @@ export function ChatPanel({
   onSend,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !busy, [busy, draft]);
   const shouldRenderFallbackCanvas = Boolean(
@@ -48,6 +49,13 @@ export function ChatPanel({
 
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    window.requestAnimationFrame(() => {
+      messageListRef.current?.scrollTo({
+        top: messageListRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+      textarea.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }, [focusComposerSignal]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -72,7 +80,7 @@ export function ChatPanel({
         <span className={busy ? "status-dot busy" : "status-dot"}>{busy ? "运行中" : "就绪"}</span>
       </div>
 
-      <div className="message-list">
+      <div ref={messageListRef} className="message-list">
         {messages.map((message) => (
           <Fragment key={message.id}>
             <article className={`message ${message.role}`}>
