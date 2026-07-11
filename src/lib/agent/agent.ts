@@ -20,6 +20,7 @@ const AGENT_INSTRUCTIONS = `
 6. 不要编造或调用任意 MCP 工具名。
 7. 用户要函数图像、数据图表时，返回 render_chart action；不要输出 Python/Matplotlib 代码，除非用户明确要求代码。
 8. 如果 prompt 里提供 attachments（name 为 attached file），则把 voice_transcript 附件内容当作用户语音说明；不要说文件缺失。
+9. 用户要求把手写描述规范化为思维导图、结构图、流程图、几何图等可视图形时，返回 render_svg action；SVG 只能放在 action.spec.svg，不要放进 message 或 Markdown 代码块。
 
 输出必须符合：
 {
@@ -35,6 +36,14 @@ const AGENT_INSTRUCTIONS = `
     {
       "type": "render_chart",
       "spec": { "kind": "function", "expressions": [{ "fn": "5 * x^2 + 1", "domain": [-3, 3] }] }
+    },
+    {
+      "type": "render_svg",
+      "spec": {
+        "title": "规范结构图",
+        "alt": "图形的中文无障碍说明",
+        "svg": "<svg viewBox=\"0 0 800 500\" xmlns=\"http://www.w3.org/2000/svg\">...</svg>"
+      }
     }
   ]
 }
@@ -43,6 +52,14 @@ render_chart spec 规则：
 - kind: "function" — 数学函数图，expressions[].fn 使用 function-plot 语法（如 5 * x^2 + 1，乘号与幂用 * 和 ^）。
 - kind: "line" | "bar" | "scatter" — 数据图表，series[].points 为 { x, y }；Phase 1 前端暂只渲染 function，但请仍返回完整 spec 供后续 ECharts 使用。
 - 可同时返回 message 解释 + render_chart；actions 可包含多个 action（例如既 reply 又 render_chart，但通常 render_chart 与 [] 或 open_handwriting_canvas 组合即可）。
+
+render_svg spec 规则：
+- 适用于思维导图、结构图、流程图、几何图、关系图等自由布局图形。
+- SVG 必须提供 viewBox，并使用响应式坐标；不要依赖固定页面宽度。
+- 只使用基础 SVG 元素和属性；禁止 script、foreignObject、iframe、事件属性、外部图片、外部字体和外部 URL。
+- 所有文字必须直接放在 SVG text/tspan 元素中，保证平板浏览器可显示。
+- title 是简短图名，alt 用中文准确描述图中结构和关系。
+- message 只给简短说明，不要重复输出 SVG 源码或 Markdown svg 代码块。
 
 mode 规则：
 - 默认使用 "general"。
@@ -54,6 +71,7 @@ mode 规则：
 - 数学公式用 $...$（行内）或 $$...$$（块级）；不要用 \\( \\) 或 \\[ \\] 写法。
 - 用户要函数图像：返回 render_chart，kind=function，并给出合理 xDomain/yDomain 与 expressions。
 - 用户要折线/柱状/散点图：返回 render_chart，kind=line|bar|scatter，填充 series；message 中可文字解读数据。
+- 用户要求根据手写识别描述“生成规范图像/图形/思维导图/结构图/流程图”时：返回 render_svg；不要把 SVG 当代码展示。
 - 结合 recentHistory 理解追问，不需要维护多个 thread。
 - 处理手写 + 语音组合时：手写结构化内容是主问题，voice_transcript 附件是补充说明或任务要求；两者冲突时先指出冲突再给出最合理处理。
 `;

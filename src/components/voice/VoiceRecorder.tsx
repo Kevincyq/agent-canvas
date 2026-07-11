@@ -2,7 +2,6 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
-import { VOICE_ATTACHMENT_NAME } from "@/lib/voice/composer-sync";
 import { startAzureRealtimeAsr, type AzureRealtimeAsrHandle } from "@/lib/voice/azure-realtime-asr";
 import type { VoiceSegment, VoiceTranscriptPayload } from "@/lib/voice/timeline";
 
@@ -260,18 +259,13 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, VoiceRecorderProps>
         <span className="voice-timer">{formatElapsed(elapsedMs)}</span>
       </div>
 
-      {!microphoneSupported ? (
-        <p className="voice-hint">当前浏览器不支持麦克风录音。</p>
-      ) : (
-        <p className="voice-hint">
-          使用 Azure Speech 实时转写（中国区可用）；手写 Send 后会自动停录并附加为 {VOICE_ATTACHMENT_NAME}。
-        </p>
-      )}
+      {!microphoneSupported ? <p className="voice-hint">当前浏览器不支持麦克风录音。</p> : null}
 
-      <div className="voice-transcript" aria-live="polite">
-        {visibleTranscript ||
-          `开始录音后，这里会显示实时转写；发送 AskAI 时会作为 ${VOICE_ATTACHMENT_NAME} 附件。`}
-      </div>
+      {visibleTranscript ? (
+        <div className="voice-transcript" aria-live="polite">
+          {visibleTranscript}
+        </div>
+      ) : null}
 
       {error ? (
         <p className="voice-error" role="alert">

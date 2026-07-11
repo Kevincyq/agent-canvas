@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { PlotSpecSchema } from "@/types/plot";
+import { SvgSpecSchema, type SvgSpec } from "@/types/svg";
 
 export const PointSchema = z.object({
   x: z.number(),
@@ -68,6 +69,10 @@ export const AgentActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("render_chart"),
     spec: PlotSpecSchema,
+  }),
+  z.object({
+    type: z.literal("render_svg"),
+    spec: SvgSpecSchema,
   }),
 ]);
 
@@ -168,4 +173,5 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   charts?: PlotSpec[];
+  svgs?: SvgSpec[];
 };

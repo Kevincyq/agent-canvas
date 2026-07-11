@@ -9,6 +9,7 @@ import { createCanvasSummary } from "@/lib/canvas/actions";
 import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
 import { markAndroidTabletDocument } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
+import { extractLegacySvgFences, extractRenderSvgSpecs } from "@/lib/svg/extract";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import { createVoiceTranscriptAttachment, type VoiceTranscriptPayload } from "@/lib/voice/timeline";
 import {
@@ -28,7 +29,7 @@ const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "你好，我是 Canvas Agent。你可以说「打开画布」或「我要手写输入」，识别结果会回到 AskAI，再发给我整理、解题或继续追问。",
+    "你好，我是 Dralk Agent，你可以边画边说输入内容，发给 AskAI，整理内容、解题或追问。",
 };
 
 type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";
@@ -179,11 +180,13 @@ export function CanvasAgentApp() {
         throw new Error(payload.message || "Agent API 请求失败");
       }
 
+      const legacySvg = extractLegacySvgFences(payload.message);
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: payload.message,
+        content: legacySvg.content || (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message),
         charts: extractRenderChartSpecs(payload.actions),
+        svgs: [...extractRenderSvgSpecs(payload.actions), ...legacySvg.specs],
       };
       const opensCanvas = payload.actions.some((action) => action.type === "open_handwriting_canvas");
 

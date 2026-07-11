@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { PlotCard } from "@/components/chart/PlotCard";
+import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
 import { VOICE_ATTACHMENT_NAME } from "@/lib/voice/composer-sync";
 import type { ChatMessage, AgentAttachment } from "@/types/agent";
 
@@ -89,6 +90,11 @@ export function ChatPanel({
             {message.charts?.map((spec, index) => (
               <div key={`${message.id}-chart-${index}`} className="message-chart-slot">
                 <PlotCard spec={spec} />
+              </div>
+            ))}
+            {message.svgs?.map((spec, index) => (
+              <div key={`${message.id}-svg-${index}`} className="message-svg-slot">
+                <SvgDiagramCard spec={spec} />
               </div>
             ))}
             {canvasSlot && canvasAfterMessageId === message.id ? (

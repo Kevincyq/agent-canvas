@@ -106,7 +106,7 @@ export function buildAgentPrompt(request: AgentRequest): string {
         message: "Short natural-language response for the user in Chinese.",
         actions: [
           {
-            type: "reply | open_handwriting_canvas | render_chart",
+            type: "reply | open_handwriting_canvas | render_chart | render_svg",
           },
         ],
         renderChartExamples: {
@@ -138,6 +138,14 @@ export function buildAgentPrompt(request: AgentRequest): string {
                 },
               ],
             },
+          },
+        },
+        renderSvgExample: {
+          type: "render_svg",
+          spec: {
+            title: "项目结构图",
+            alt: "中心节点 Project 分别连接 A、B、C 三个子节点",
+            svg: '<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg"><circle cx="160" cy="180" r="60" fill="none" stroke="#2563eb"/><text x="160" y="185" text-anchor="middle">Project</text></svg>',
           },
         },
       },
