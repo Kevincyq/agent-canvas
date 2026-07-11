@@ -29,7 +29,8 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com https://mcp.fluxink.ai https://*.fluxink.ai",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://unpkg.com https://mcp.fluxink.ai https://*.fluxink.ai",
+              "worker-src 'self' blob: data:",
               "style-src 'self' 'unsafe-inline' https://mcp.fluxink.ai https://*.fluxink.ai",
               "img-src 'self' data: blob: https://mcp.fluxink.ai https://*.fluxink.ai",
               "font-src 'self' data: https://mcp.fluxink.ai https://*.fluxink.ai",

@@ -7,7 +7,7 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { PlotCard } from "@/components/chart/PlotCard";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
-import { VOICE_ATTACHMENT_NAME } from "@/lib/voice/composer-sync";
+import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
 import type { ChatMessage, AgentAttachment } from "@/types/agent";
 
 type ChatPanelProps = {
@@ -87,6 +87,11 @@ export function ChatPanel({
             <article className={`message ${message.role}`}>
               <ChatMessageContent content={message.content} variant={message.role} />
             </article>
+            {message.attachments?.map((attachment) => (
+              <div key={`${message.id}-${attachment.id}`} className="message-attachment-slot">
+                <VoiceAttachmentCard attachment={attachment} status="sent" />
+              </div>
+            ))}
             {message.charts?.map((spec, index) => (
               <div key={`${message.id}-chart-${index}`} className="message-chart-slot">
                 <PlotCard spec={spec} />
@@ -138,8 +143,7 @@ export function ChatPanel({
         </div>
         {voiceAttachment?.content.trim() ? (
           <div className="composer-attachment" aria-label="语音附件预览">
-            <p className="composer-attachment-label">{VOICE_ATTACHMENT_NAME} · 语音转写</p>
-            <p className="composer-attachment-preview">{voiceAttachment.content}</p>
+            <VoiceAttachmentCard attachment={voiceAttachment} status="pending" defaultOpen />
           </div>
         ) : null}
       </form>

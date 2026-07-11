@@ -139,11 +139,15 @@ export function CanvasAgentApp() {
 
   async function handleSend(message: string) {
     const cleanedMessage = stripVoiceAttachmentReference(message);
+    const outboundAttachments = shouldSendVoiceAttachment(voiceAttachmentRef.current)
+      ? [voiceAttachmentRef.current!]
+      : [];
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: cleanedMessage,
+      attachments: outboundAttachments,
     };
 
     const nextMessages = [...messages, userMessage];
@@ -151,10 +155,6 @@ export function CanvasAgentApp() {
     setBusy(true);
 
     try {
-      const outboundAttachments = shouldSendVoiceAttachment(voiceAttachmentRef.current)
-        ? [voiceAttachmentRef.current!]
-        : [];
-
       const response = await fetch("/api/agent", {
         method: "POST",
         headers: {
@@ -196,6 +196,7 @@ export function CanvasAgentApp() {
       }
       await applyActions(payload.actions);
       setVoiceAttachment(null);
+      voiceAttachmentRef.current = null;
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -299,6 +300,14 @@ export function CanvasAgentApp() {
             <div>
               <strong>手写内容已转到 AskAI 输入框</strong>
               <p>{recognitionText.trim() || "识别结果已放入下方输入框，可继续补充要求。"}</p>
+              {voiceAttachment?.content.trim() ? (
+                <span className="canvas-voice-attached">
+                  ✓ 语音转写已附加
+                  {voiceAttachment.metadata.segmentCount
+                    ? ` · ${voiceAttachment.metadata.segmentCount} 段`
+                    : ""}
+                </span>
+              ) : null}
             </div>
           </div>
           <button type="button" onClick={() => setCanvasCollapsed(false)}>

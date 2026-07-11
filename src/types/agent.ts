@@ -174,4 +174,5 @@ export type ChatMessage = {
   content: string;
   charts?: PlotSpec[];
   svgs?: SvgSpec[];
+  attachments?: AgentAttachment[];
 };

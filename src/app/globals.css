@@ -468,28 +468,99 @@ a {
 }
 
 .composer-attachment {
+  margin-top: 10px;
+}
+
+.message-attachment-slot {
+  align-self: flex-end;
+  max-width: min(88%, 620px);
+  width: 100%;
+}
+
+.voice-attachment-card {
   background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-top: 10px;
-  padding: 10px 12px;
+  color: var(--foreground);
+  overflow: hidden;
 }
 
-.composer-attachment-label {
-  color: #64748b;
+.voice-attachment-card summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  list-style: none;
+  min-height: var(--touch-target);
+  padding: 9px 11px;
+}
+
+.voice-attachment-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.voice-attachment-card summary > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.voice-attachment-card strong {
+  font-size: 13px;
+}
+
+.voice-attachment-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.voice-attachment-check {
+  align-items: center;
+  background: rgba(5, 150, 105, 0.12);
+  border-radius: 999px;
+  color: var(--success);
+  display: inline-flex;
+  flex: 0 0 26px;
   font-size: 12px;
-  font-weight: 600;
-  margin: 0 0 6px;
+  font-weight: 800;
+  height: 26px;
+  justify-content: center;
 }
 
-.composer-attachment-preview {
-  color: #0f172a;
-  font-size: 14px;
+.voice-attachment-toggle {
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.voice-attachment-card[open] .voice-attachment-toggle {
+  font-size: 0;
+}
+
+.voice-attachment-card[open] .voice-attachment-toggle::after {
+  content: "收起";
+  font-size: 11px;
+}
+
+.voice-attachment-card > p {
+  border-top: 1px solid var(--border);
+  font-size: 13px;
   line-height: 1.5;
   margin: 0;
   max-height: 120px;
   overflow: auto;
+  padding: 9px 11px;
   white-space: pre-wrap;
+}
+
+.voice-attachment-pending {
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.voice-attachment-sent {
+  background: #ffffff;
 }
 
 .canvas-actions button,
@@ -618,6 +689,14 @@ a {
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.canvas-voice-attached {
+  color: var(--success);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 5px;
 }
 
 .canvas-collapsed-summary button {
@@ -903,6 +982,18 @@ a {
   color: var(--danger);
 }
 
+.voice-status.recovering {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.25);
+  color: var(--warning);
+}
+
+.voice-status.interrupted {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.22);
+  color: var(--danger);
+}
+
 .voice-controls {
   align-items: center;
   display: flex;
@@ -954,6 +1045,14 @@ a {
   overflow-wrap: anywhere;
   padding: 10px 12px;
   white-space: pre-wrap;
+}
+
+.voice-attachment-state {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .voice-hint,
