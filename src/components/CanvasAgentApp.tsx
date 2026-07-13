@@ -153,6 +153,9 @@ export function CanvasAgentApp() {
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setBusy(true);
+    setVoiceAttachment(null);
+    voiceAttachmentRef.current = null;
+    voiceRecorderRef.current?.clearTranscript();
 
     try {
       const response = await fetch("/api/agent", {
@@ -195,8 +198,9 @@ export function CanvasAgentApp() {
         setCanvasAfterMessageId(assistantMessage.id);
       }
       await applyActions(payload.actions);
-      setVoiceAttachment(null);
-      voiceAttachmentRef.current = null;
+      if (canvasOpen) {
+        setCanvasCollapsed(true);
+      }
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -298,20 +302,15 @@ export function CanvasAgentApp() {
           <div className="canvas-collapsed-copy">
             <span className="canvas-collapsed-icon" aria-hidden="true">✓</span>
             <div>
-              <strong>手写内容已转到 AskAI 输入框</strong>
-              <p>{recognitionText.trim() || "识别结果已放入下方输入框，可继续补充要求。"}</p>
+              <strong>手写内容已就绪</strong>
+              <p>可在下方输入框补充说明后发送 AskAI。</p>
               {voiceAttachment?.content.trim() ? (
-                <span className="canvas-voice-attached">
-                  ✓ 语音转写已附加
-                  {voiceAttachment.metadata.segmentCount
-                    ? ` · ${voiceAttachment.metadata.segmentCount} 段`
-                    : ""}
-                </span>
+                <span className="canvas-voice-attached">语音已附加</span>
               ) : null}
             </div>
           </div>
           <button type="button" onClick={() => setCanvasCollapsed(false)}>
-            重新展开
+            展开
           </button>
         </div>
       ) : null}

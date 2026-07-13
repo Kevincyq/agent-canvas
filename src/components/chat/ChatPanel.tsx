@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import { PlotCard } from "@/components/chart/PlotCard";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
 import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
@@ -74,22 +75,27 @@ export function ChatPanel({
   return (
     <section className="chat-panel" aria-label="对话区">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Canvas Agent</p>
-          <h1>对话意图识别</h1>
-        </div>
-        <span className={busy ? "status-dot busy" : "status-dot"}>{busy ? "运行中" : "就绪"}</span>
+        <h1 className="panel-title">Dralk Agent</h1>
+        <span
+          className={busy ? "status-dot busy" : "status-dot"}
+          aria-label={busy ? "运行中" : "就绪"}
+          title={busy ? "运行中" : "就绪"}
+        />
       </div>
 
       <div ref={messageListRef} className="message-list">
         {messages.map((message) => (
           <Fragment key={message.id}>
-            <article className={`message ${message.role}`}>
-              <ChatMessageContent content={message.content} variant={message.role} />
-            </article>
+            {message.role === "user" ? (
+              <UserMessageBubble content={message.content} attachments={message.attachments} />
+            ) : (
+              <article className={`message ${message.role}`}>
+                <ChatMessageContent content={message.content} variant={message.role} />
+              </article>
+            )}
             {message.attachments?.map((attachment) => (
               <div key={`${message.id}-${attachment.id}`} className="message-attachment-slot">
-                <VoiceAttachmentCard attachment={attachment} status="sent" />
+                <VoiceAttachmentCard attachment={attachment} status="sent" compact />
               </div>
             ))}
             {message.charts?.map((spec, index) => (
@@ -118,7 +124,7 @@ export function ChatPanel({
             ref={textareaRef}
             value={draft}
             placeholder="例如：打开画布或手写输入..."
-            rows={3}
+            rows={2}
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -143,7 +149,7 @@ export function ChatPanel({
         </div>
         {voiceAttachment?.content.trim() ? (
           <div className="composer-attachment" aria-label="语音附件预览">
-            <VoiceAttachmentCard attachment={voiceAttachment} status="pending" defaultOpen />
+            <VoiceAttachmentCard attachment={voiceAttachment} status="pending" compact />
           </div>
         ) : null}
       </form>

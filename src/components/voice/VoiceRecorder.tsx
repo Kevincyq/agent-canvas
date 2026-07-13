@@ -21,6 +21,7 @@ type VoiceRecorderProps = {
 export type VoiceRecorderHandle = {
   stopAndFlush: () => VoiceTranscriptPayload | null;
   isRecording: () => boolean;
+  clearTranscript: () => void;
 };
 
 type AsrStatus = "idle" | "connecting" | "active" | "recovering" | "interrupted";
@@ -284,13 +285,32 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, VoiceRecorderProps>
     [clearReconnectTimer, emitTranscript, sessionId],
   );
 
+  const clearTranscript = useCallback(() => {
+    if (recordingRef.current) {
+      return;
+    }
+
+    setCloudSegments([]);
+    setCloudInterimTranscript("");
+    setError(null);
+    cloudSegmentsRef.current = [];
+    cloudInterimRef.current = "";
+    onTranscriptChange({
+      sessionId,
+      transcript: "",
+      segments: [],
+      source: "cloud_asr",
+    });
+  }, [onTranscriptChange, sessionId]);
+
   useImperativeHandle(
     ref,
     () => ({
       stopAndFlush: () => stopRecording(true),
       isRecording: () => recordingRef.current,
+      clearTranscript,
     }),
-    [stopRecording],
+    [clearTranscript, stopRecording],
   );
 
   const startRecording = useCallback(async () => {
@@ -318,24 +338,6 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, VoiceRecorderProps>
     startRealtimeAttemptRef.current(generation, 0);
   }, [disabled, getElapsedMs, microphoneSupported]);
 
-  const clearTranscript = useCallback(() => {
-    if (recordingRef.current) {
-      return;
-    }
-
-    setCloudSegments([]);
-    setCloudInterimTranscript("");
-    setError(null);
-    cloudSegmentsRef.current = [];
-    cloudInterimRef.current = "";
-    onTranscriptChange({
-      sessionId,
-      transcript: "",
-      segments: [],
-      source: "cloud_asr",
-    });
-  }, [onTranscriptChange, sessionId]);
-
   useEffect(
     () => () => {
       stopRecording(true);
@@ -357,53 +359,53 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, VoiceRecorderProps>
 
   return (
     <section
-      className={compact ? "voice-panel voice-panel-compact" : "voice-panel"}
+      className={compact ? "voice-panel voice-panel-compact" : "voice-panel voice-panel-toolbar"}
       aria-label="语音输入"
     >
-      <div className="voice-panel-header">
-        <div>
-          <p className="eyebrow">Voice input</p>
-          <h3>语音说明</h3>
+      <div className="voice-toolbar">
+        <div className="voice-toolbar-meta">
+          <span className="voice-toolbar-label">语音</span>
+          <span
+            className={
+              asrStatus === "interrupted"
+                ? "voice-status interrupted"
+                : asrStatus === "recovering"
+                  ? "voice-status recovering"
+                  : recording
+                    ? "voice-status recording"
+                    : "voice-status"
+            }
+          >
+            {statusText}
+          </span>
+          {recording || visibleTranscript ? (
+            <span className="voice-timer">{formatElapsed(elapsedMs)}</span>
+          ) : null}
         </div>
-        <span
-          className={
-            asrStatus === "interrupted"
-              ? "voice-status interrupted"
-              : asrStatus === "recovering"
-                ? "voice-status recovering"
-                : recording
-                  ? "voice-status recording"
-                  : "voice-status"
-          }
-        >
-          {statusText}
-        </span>
-      </div>
 
-      <div className="voice-controls">
-        <button
-          type="button"
-          className={recording ? "voice-button danger" : "voice-button primary"}
-          disabled={disabled || !microphoneSupported}
-          onClick={recording ? () => stopRecording(true) : startRecording}
-        >
-          {recording ? "停止录音" : "开始录音"}
-        </button>
-        <button type="button" className="voice-button" disabled={recording || !visibleTranscript} onClick={clearTranscript}>
-          清空转写
-        </button>
-        <span className="voice-timer">{formatElapsed(elapsedMs)}</span>
+        <div className="voice-controls">
+          <button
+            type="button"
+            className={recording ? "voice-button danger" : "voice-button primary"}
+            disabled={disabled || !microphoneSupported}
+            onClick={recording ? () => stopRecording(true) : startRecording}
+          >
+            {recording ? "停止" : "录音"}
+          </button>
+          {!recording && visibleTranscript ? (
+            <button type="button" className="voice-button ghost" onClick={clearTranscript}>
+              清空
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {!microphoneSupported ? <p className="voice-hint">当前浏览器不支持麦克风录音。</p> : null}
 
-      {visibleTranscript ? (
-        <>
-          <p className="voice-attachment-state">✓ 实时转写已作为语音附件，将随本次 AskAI 请求发送</p>
-          <div className="voice-transcript" aria-live="polite">
-            {visibleTranscript}
-          </div>
-        </>
+      {recording && cloudInterimTranscript.trim() ? (
+        <p className="voice-live-preview" aria-live="polite">
+          {cloudInterimTranscript.trim()}
+        </p>
       ) : null}
 
       {error ? (

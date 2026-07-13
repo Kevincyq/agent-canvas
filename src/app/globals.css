@@ -94,10 +94,11 @@ a {
 }
 
 .panel-header h1,
-.panel-header h2 {
+.panel-header h2,
+.panel-title {
   font-size: 20px;
   line-height: 1.2;
-  margin: 2px 0 0;
+  margin: 0;
 }
 
 .eyebrow {
@@ -111,21 +112,18 @@ a {
 
 .status-dot {
   align-items: center;
-  background: rgba(5, 150, 105, 0.1);
-  border: 1px solid rgba(5, 150, 105, 0.25);
+  background: var(--success);
+  border: 0;
   border-radius: 999px;
-  color: var(--success);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 10px;
-  white-space: nowrap;
+  flex: 0 0 10px;
+  height: 10px;
+  padding: 0;
+  width: 10px;
 }
 
 .status-dot.busy {
-  background: rgba(217, 119, 6, 0.12);
-  border-color: rgba(217, 119, 6, 0.28);
-  color: var(--warning);
+  background: var(--warning);
 }
 
 .message-list {
@@ -189,15 +187,17 @@ a {
 
 .svg-diagram-header strong {
   display: block;
+  flex: 1;
   font-size: 15px;
-  margin-top: 2px;
+  min-width: 0;
 }
 
 .svg-diagram-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 0 0 auto;
+  gap: 6px;
   justify-content: flex-end;
+  position: relative;
 }
 
 .svg-diagram-actions button {
@@ -207,11 +207,50 @@ a {
   color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
-  min-height: var(--touch-target);
-  padding: 8px 11px;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
-.svg-diagram-actions button:hover:not(:disabled) {
+.svg-diagram-primary {
+  min-width: 56px;
+}
+
+.svg-diagram-menu-trigger {
+  min-width: 34px;
+  padding-inline: 0;
+}
+
+.svg-diagram-menu {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+}
+
+.svg-diagram-menu button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.svg-diagram-menu button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.svg-diagram-actions > button:hover:not(:disabled) {
   background: #eaf1ff;
   border-color: rgba(37, 99, 235, 0.35);
   color: var(--accent);
@@ -224,11 +263,14 @@ a {
     linear-gradient(90deg, rgba(219, 227, 239, 0.5) 1px, transparent 1px),
     #ffffff;
   background-size: 24px 24px;
+  border: 0;
+  cursor: zoom-in;
   display: flex;
   justify-content: center;
-  min-height: 260px;
+  min-height: 240px;
   overflow: auto;
-  padding: 18px;
+  padding: 16px;
+  width: 100%;
 }
 
 .svg-diagram-stage img {
@@ -271,6 +313,7 @@ a {
 }
 
 .svg-diagram-expanded .svg-diagram-stage {
+  cursor: zoom-out;
   flex: 1;
   min-height: 0;
 }
@@ -341,6 +384,11 @@ a {
   line-height: 1.55;
   margin: 0;
   white-space: pre-wrap;
+}
+
+.message-summary {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .message-markdown {
@@ -468,7 +516,7 @@ a {
 }
 
 .composer-attachment {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .message-attachment-slot {
@@ -485,6 +533,22 @@ a {
   overflow: hidden;
 }
 
+.voice-attachment-compact {
+  background: #ffffff;
+  border-radius: 10px;
+}
+
+.voice-attachment-compact summary {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.voice-attachment-compact > p {
+  font-size: 12px;
+  max-height: 96px;
+  padding: 8px 10px;
+}
+
 .voice-attachment-card summary {
   align-items: center;
   cursor: pointer;
@@ -499,7 +563,8 @@ a {
   display: none;
 }
 
-.voice-attachment-card summary > span:nth-child(2) {
+.voice-attachment-card summary > span:nth-child(2),
+.voice-attachment-summary {
   display: grid;
   flex: 1;
   gap: 2px;
@@ -517,15 +582,12 @@ a {
 
 .voice-attachment-check {
   align-items: center;
-  background: rgba(5, 150, 105, 0.12);
-  border-radius: 999px;
-  color: var(--success);
   display: inline-flex;
-  flex: 0 0 26px;
-  font-size: 12px;
-  font-weight: 800;
-  height: 26px;
+  flex: 0 0 auto;
+  font-size: 14px;
+  height: auto;
   justify-content: center;
+  width: auto;
 }
 
 .voice-attachment-toggle {
@@ -647,12 +709,12 @@ a {
   align-items: center;
   background: #f8fafc;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   display: flex;
-  gap: 14px;
+  gap: 12px;
   justify-content: space-between;
-  min-height: 76px;
-  padding: 12px 14px;
+  min-height: 58px;
+  padding: 10px 12px;
 }
 
 .canvas-collapsed-copy {
@@ -676,19 +738,17 @@ a {
 
 .canvas-collapsed-copy strong {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .canvas-collapsed-copy p {
   color: var(--muted);
-  display: -webkit-box;
-  font-size: 12px;
-  line-height: 1.45;
-  margin: 3px 0 0;
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 2px 0 0;
   overflow: hidden;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .canvas-voice-attached {
@@ -911,11 +971,58 @@ a {
 .voice-panel {
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   display: grid;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 10px 12px;
   width: min(100%, 760px);
+}
+
+.voice-panel-toolbar {
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.voice-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.voice-toolbar-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.voice-toolbar-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.voice-live-preview {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.voice-button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  min-height: 32px;
+  padding-inline: 6px;
 }
 
 .canvas-session-fullscreen .voice-panel,
@@ -997,8 +1104,9 @@ a {
 .voice-controls {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .voice-button {
@@ -1006,10 +1114,10 @@ a {
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--foreground);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  min-height: 36px;
-  padding: 6px 10px;
+  min-height: 32px;
+  padding: 5px 10px;
 }
 
 .voice-button.primary {
@@ -1029,9 +1137,9 @@ a {
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .voice-transcript {
