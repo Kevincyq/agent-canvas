@@ -18,6 +18,8 @@
 
 ## Durable Decisions
 
+- Architecture classification (2026-07-12): current code has exactly one OpenAI Agents JS `Agent`, named `Canvas Agent Intent Router`. AskAI owns user-facing intent routing and final answers. Dralk is currently a multimodal input workflow/capability bundle implemented by `CanvasAgentApp` state, FluxInk MCP App hosting/recognition, Azure realtime ASR, and composer handoff; it is neither a separate SDK Agent nor a registered SDK Skill/Tool. The Agent has no `tools`, `mcpServers`, or `handoffs`; `open_handwriting_canvas` is model-generated application JSON executed by React. Recognition results return to the composer and only reach the same Agent on a later user send, so there is no same-run SDK tool-result loop. Product naming should prefer `Dralk input mode/workflow` under AskAI unless Dralk later gains its own instructions, model run, tools/state, autonomous completion criteria, and Agent handoff/tool boundary.
+
 - Project-root `AGENTS.md` and `MEMORY.md` were created because they were missing and `~/.codex/templates` was not present.
 - Credential values must not be written here. Relevant environment variable names can be documented when needed.
 - Current root app is effectively a standalone copy/adaptation of `openai-agents-js/examples/canvas-agent-mvp/`, while `openai-agents-js/` remains a separate Git repo with its own contribution rules.
