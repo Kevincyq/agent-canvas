@@ -10,6 +10,7 @@ import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
 import { markAndroidTabletDocument } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { extractLegacySvgFences, extractRenderSvgSpecs } from "@/lib/svg/extract";
+import { svgSpecsToContentBlocks } from "@/lib/content/legacy";
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI } from "@/lib/mcp/constants";
 import { createVoiceTranscriptAttachment, type VoiceTranscriptPayload } from "@/lib/voice/timeline";
 import {
@@ -24,6 +25,7 @@ import type {
   HwrMode,
   HwrOpenResponse,
 } from "@/types/agent";
+import type { ContentBlock } from "@/types/content-block";
 
 const welcomeMessage: ChatMessage = {
   id: "welcome",
@@ -184,12 +186,16 @@ export function CanvasAgentApp() {
       }
 
       const legacySvg = extractLegacySvgFences(payload.message);
+      const legacySvgBlocks = svgSpecsToContentBlocks([
+        ...extractRenderSvgSpecs(payload.actions),
+        ...legacySvg.specs,
+      ]);
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: legacySvg.content || (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message),
+        blocks: [...payload.blocks, ...legacySvgBlocks],
         charts: extractRenderChartSpecs(payload.actions),
-        svgs: [...extractRenderSvgSpecs(payload.actions), ...legacySvg.specs],
       };
       const opensCanvas = payload.actions.some((action) => action.type === "open_handwriting_canvas");
 
@@ -213,6 +219,31 @@ export function CanvasAgentApp() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleUpdateMessageBlocks(messageId: string, blocks: ContentBlock[]) {
+    setMessages((current) => current.map((message) => message.id === messageId ? { ...message, blocks } : message));
+  }
+
+  function handleCreateDocument(sourceMessageId: string, title: string, blocks: ContentBlock[]) {
+    const documentId = crypto.randomUUID();
+    const documentBlocks = structuredClone(blocks).map((block, index) => ({
+      ...block,
+      id: `${documentId}-block-${index + 1}`,
+    }));
+    const documentMessage: ChatMessage = {
+      id: documentId,
+      role: "assistant",
+      content: "",
+      document: {
+        title,
+        sourceMessageId,
+        createdAt: new Date().toISOString(),
+      },
+      blocks: documentBlocks,
+    };
+
+    setMessages((current) => [...current, documentMessage]);
   }
 
   const stableWidgetRecognitionChange = useCallback(
@@ -356,6 +387,8 @@ export function CanvasAgentApp() {
         busy={busy}
         onDraftChange={setComposerDraft}
         onSend={handleSend}
+        onCreateDocument={handleCreateDocument}
+        onUpdateMessageBlocks={handleUpdateMessageBlocks}
       />
     </main>
   );

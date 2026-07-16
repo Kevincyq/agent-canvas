@@ -35,6 +35,7 @@ export function createFallbackResponse(request: AgentRequest): AgentResponse {
       message: plotSpec.kind === "function"
         ? `已根据请求绘制函数图像。${plotSpec.title ? `（${plotSpec.title}）` : ""}`
         : "已识别图表请求，但当前 fallback 仅支持 f(x)=... 形式的函数图。",
+      blocks: [],
       actions: plotSpec.kind === "function" ? [{ type: "render_chart", spec: plotSpec }] : [],
     };
   }
@@ -74,6 +75,7 @@ export function createFallbackResponse(request: AgentRequest): AgentResponse {
       actions.length > 0
         ? "我已识别到手写输入意图，正在对话中打开手写画布。你可以直接书写，停笔后我会自动识别并更新结构化结果。"
         : "当前未配置 TURING_API_KEY 或 OPENAI_API_KEY，无法调用云端 AI。请配置后重试；手写画布和 FluxInk MCP 识别链路仍可继续本地验证。",
+    blocks: [],
     actions:
       actions.length > 0
         ? actions
@@ -103,10 +105,58 @@ export function buildAgentPrompt(request: AgentRequest): string {
         metadata: attachment.metadata,
       })),
       outputContract: {
-        message: "Short natural-language response for the user in Chinese.",
+        message: "Short introduction in Chinese. Put substantive answer content in typed blocks.",
+        blocks: [
+          {
+            id: "text-1",
+            type: "markdown",
+            sourceFormat: "markdown",
+            title: "答复正文",
+            source: "## 结论\nMarkdown 正文",
+          },
+          {
+            id: "diagram-1",
+            type: "mermaid",
+            sourceFormat: "mermaid",
+            diagramType: "flowchart",
+            title: "流程图标题",
+            source: "flowchart LR\n  A[需求] --> B[开发]",
+          },
+          {
+            id: "mindmap-1",
+            type: "mermaid",
+            sourceFormat: "mermaid",
+            diagramType: "mindmap",
+            title: "思维导图标题",
+            source: "mindmap\n  root((主题))\n    分支一\n    分支二",
+          },
+          {
+            id: "formula-1",
+            type: "latex",
+            sourceFormat: "latex",
+            title: "公式标题",
+            source: "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
+          },
+          {
+            id: "table-1",
+            type: "table",
+            sourceFormat: "table_json",
+            title: "表格标题",
+            columns: ["列一", "列二"],
+            rows: [["内容一", "内容二"]],
+          },
+          {
+            id: "structure-1",
+            type: "graph",
+            sourceFormat: "graph_json",
+            title: "结构图标题",
+            nodes: [{ id: "a", label: "节点 A", x: 180, y: 210 }, { id: "b", label: "节点 B", x: 420, y: 210 }],
+            edges: [{ source: "a", target: "b", label: "关系" }],
+          },
+        ],
         actions: [
           {
-            type: "reply | open_handwriting_canvas | render_chart | render_svg",
+            type: "reply | open_handwriting_canvas | render_chart | render_svg (legacy only)",
           },
         ],
         renderChartExamples: {
@@ -140,13 +190,22 @@ export function buildAgentPrompt(request: AgentRequest): string {
             },
           },
         },
-        renderSvgExample: {
-          type: "render_svg",
-          spec: {
-            title: "项目结构图",
-            alt: "中心节点 Project 分别连接 A、B、C 三个子节点",
-            svg: '<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg"><circle cx="160" cy="180" r="60" fill="none" stroke="#2563eb"/><text x="160" y="185" text-anchor="middle">Project</text></svg>',
-          },
+        formatPolicy: {
+          markdown: "Text, headings and lists",
+          table_json: "Editable tables",
+          mermaid_flowchart: "Editable flowcharts; diagramType must be flowchart",
+          mermaid_mindmap: "Editable mind maps; diagramType must be mindmap",
+          latex: "Standalone formulas",
+          graph_json: "Editable structure diagrams and node-edge relationships",
+          svg: "Free-layout or geometry visuals only",
+        },
+        handwritingDiagramFidelity: {
+          shapeAndConnectorWords:
+            "quadrilateral, rectangle, circle, ellipse, line and arc are visual metadata, not semantic nodes",
+          preserve:
+            "Keep exactly the recognized text labels and explicit relationships. Do not invent categories, translations or hierarchy.",
+          example:
+            "quadrilateral ProjA line line circle B circle c arc ellipse D => root ProjA with direct children B, C and D",
         },
       },
     },

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { PlotSpecSchema } from "@/types/plot";
 import { SvgSpecSchema, type SvgSpec } from "@/types/svg";
+import { ContentBlocksSchema, type ContentBlock } from "@/types/content-block";
 
 export const PointSchema = z.object({
   x: z.number(),
@@ -99,6 +100,7 @@ export const AgentRequestSchema = z.object({
 
 export const AgentResponseSchema = z.object({
   message: z.string(),
+  blocks: ContentBlocksSchema,
   actions: z.array(AgentActionSchema),
 });
 
@@ -172,6 +174,12 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  document?: {
+    title: string;
+    sourceMessageId?: string;
+    createdAt: string;
+  };
+  blocks?: ContentBlock[];
   charts?: PlotSpec[];
   svgs?: SvgSpec[];
   attachments?: AgentAttachment[];

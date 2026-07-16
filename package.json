@@ -19,6 +19,7 @@
     "@openai/agents": "latest",
     "function-plot": "^1.25.4",
     "katex": "^0.17.0",
+    "mermaid": "^11.16.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
     "next": "latest",
     "openai": "latest",

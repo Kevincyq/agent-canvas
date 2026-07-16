@@ -2,14 +2,17 @@
 
 import type { FormEvent } from "react";
 import type { ReactNode } from "react";
-import { Fragment, useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import { PlotCard } from "@/components/chart/PlotCard";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
+import { ContentBlockCard } from "@/components/content/ContentBlockCard";
+import { UnifiedDocumentEditor } from "@/components/editor/UnifiedDocumentEditor";
 import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
 import type { ChatMessage, AgentAttachment } from "@/types/agent";
+import type { ContentBlock } from "@/types/content-block";
 
 type ChatPanelProps = {
   messages: ChatMessage[];
@@ -21,6 +24,8 @@ type ChatPanelProps = {
   voiceAttachment?: AgentAttachment | null;
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
+  onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
+  onUpdateMessageBlocks: (messageId: string, blocks: ContentBlock[]) => void;
 };
 
 export function ChatPanel({
@@ -33,9 +38,12 @@ export function ChatPanel({
   voiceAttachment = null,
   onDraftChange,
   onSend,
+  onCreateDocument,
+  onUpdateMessageBlocks,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !busy, [busy, draft]);
   const shouldRenderFallbackCanvas = Boolean(
@@ -86,16 +94,29 @@ export function ChatPanel({
       <div ref={messageListRef} className="message-list">
         {messages.map((message) => (
           <Fragment key={message.id}>
-            {message.role === "user" ? (
+            {message.document ? (
+              <article className="saved-document-banner" aria-label={`新文档：${message.document.title}`}>
+                <span>新文档</span>
+                <div>
+                  <strong>{message.document.title}</strong>
+                  <small>已保留原答复，可继续编辑或下载内容块</small>
+                </div>
+              </article>
+            ) : message.role === "user" ? (
               <UserMessageBubble content={message.content} attachments={message.attachments} />
-            ) : (
+            ) : message.content ? (
               <article className={`message ${message.role}`}>
                 <ChatMessageContent content={message.content} variant={message.role} />
               </article>
-            )}
+            ) : null}
             {message.attachments?.map((attachment) => (
               <div key={`${message.id}-${attachment.id}`} className="message-attachment-slot">
                 <VoiceAttachmentCard attachment={attachment} status="sent" compact />
+              </div>
+            ))}
+            {message.blocks?.map((block) => (
+              <div key={`${message.id}-${block.id}`} className="message-content-block-slot">
+                <ContentBlockCard block={block} onEdit={() => setEditingMessageId(message.id)} />
               </div>
             ))}
             {message.charts?.map((spec, index) => (
@@ -153,6 +174,20 @@ export function ChatPanel({
           </div>
         ) : null}
       </form>
+      {editingMessageId ? (
+        <UnifiedDocumentEditor
+          blocks={messages.find((message) => message.id === editingMessageId)?.blocks || []}
+          onClose={() => setEditingMessageId(null)}
+          onSave={(blocks) => {
+            onUpdateMessageBlocks(editingMessageId, blocks);
+            setEditingMessageId(null);
+          }}
+          onSaveAsNew={(title, blocks) => {
+            onCreateDocument(editingMessageId, title, blocks);
+            setEditingMessageId(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
