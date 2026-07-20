@@ -4,6 +4,18 @@ import { AgentActionSchema, AgentAttachmentSchema } from "@/types/agent";
 import { ContentBlocksSchema } from "@/types/content-block";
 import { ConversationStatusSchema } from "@/types/task";
 
+export const AgentRunEvidenceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  source: z.string(),
+});
+
+export const AgentRunArtifactRefSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  artifactType: z.string(),
+});
+
 export const AgentRunRequestSchema = z.object({
   conversationId: z.string().min(1).optional(),
   message: z.string().min(1),
@@ -30,6 +42,10 @@ export const AgentRunResponseSchema = z.object({
   actions: z.array(AgentActionSchema),
   userMessageId: z.string().min(1),
   assistantMessageId: z.string().min(1),
+  outputStatus: z.enum(["ok", "needs_input", "needs_approval", "failed"]).optional(),
+  evidence: z.array(AgentRunEvidenceSchema).optional(),
+  artifacts: z.array(AgentRunArtifactRefSchema).optional(),
+  requestId: z.string().optional(),
 });
 
 export type AgentRunResponse = z.infer<typeof AgentRunResponseSchema>;
