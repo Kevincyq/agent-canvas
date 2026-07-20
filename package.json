@@ -12,31 +12,32 @@
     "typecheck": "tsc --noEmit",
     "build": "next build",
     "start": "next start",
-    "deploy:staging": "bash deploy/scripts/local-deploy.sh"
+    "deploy:staging": "bash deploy/scripts/local-deploy.sh",
+    "spike:m0": "node --env-file=.env.local scripts/m0-turing-spike.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "latest",
-    "@openai/agents": "latest",
-    "function-plot": "^1.25.4",
-    "katex": "^0.17.0",
-    "mermaid": "^11.16.0",
-    "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
-    "next": "latest",
-    "openai": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-markdown": "^10.1.0",
-    "rehype-katex": "^7.0.1",
-    "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
-    "zod": "latest"
+    "@modelcontextprotocol/ext-apps": "1.7.4",
+    "@openai/agents": "0.13.2",
+    "function-plot": "1.25.4",
+    "katex": "0.17.0",
+    "mermaid": "11.16.0",
+    "microsoft-cognitiveservices-speech-sdk": "1.50.0",
+    "next": "16.2.10",
+    "openai": "6.46.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "eslint": "latest",
-    "eslint-config-next": "latest",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "10.6.0",
+    "eslint-config-next": "16.2.10",
     "typescript": "~5.8.3"
   }
 }
