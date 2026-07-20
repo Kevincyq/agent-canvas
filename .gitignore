@@ -13,6 +13,12 @@ tsconfig.tsbuildinfo
 .env.local
 .env.*.local
 
+# Local SQLite persistence (M1+)
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 # Local deploy config and keys (never commit)
 deploy/deploy.env
 agent-canvas-staging-deploy

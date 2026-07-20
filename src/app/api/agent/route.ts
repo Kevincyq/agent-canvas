@@ -1,82 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { runCanvasAgent } from "@/lib/agent/agent";
-import { AgentRequestSchema } from "@/types/agent";
-
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
-  try {
-    const body = (await request.json()) as unknown;
-    const payload = AgentRequestSchema.parse(body);
-    if (process.env.NODE_ENV === "development" && payload.message.trim() === "/typed-blocks-demo") {
-      return NextResponse.json({
-        message: "已生成文本、公式、流程图、思维导图、表格和结构图六种可编辑内容。",
-        blocks: [
-          {
-            id: "demo-markdown",
-            type: "markdown",
-            sourceFormat: "markdown",
-            title: "项目说明",
-            source: "## Project A\n这是一段可编辑的 **Markdown** 文本。",
-          },
-          {
-            id: "demo-mermaid",
-            type: "mermaid",
-            sourceFormat: "mermaid",
-            diagramType: "flowchart",
-            title: "开发流程",
-            source: "flowchart LR\n  A[需求] --> B[开发]\n  B --> C[测试]\n  C --> D[发布]",
-          },
-          {
-            id: "demo-mindmap",
-            type: "mermaid",
-            sourceFormat: "mermaid",
-            diagramType: "mindmap",
-            title: "产品思维导图",
-            source: "mindmap\n  root((Agent Canvas))\n    输入\n      手写\n      语音\n    理解\n      识别\n      推理\n    输出\n      文档\n      图表",
-          },
-          {
-            id: "demo-latex",
-            type: "latex",
-            sourceFormat: "latex",
-            title: "求根公式",
-            source: "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
-          },
-          {
-            id: "demo-table",
-            type: "table",
-            sourceFormat: "table_json",
-            title: "任务表",
-            columns: ["阶段", "负责人", "状态"],
-            rows: [["需求", "PM", "已完成"], ["开发", "RD", "进行中"]],
-          },
-          {
-            id: "demo-graph",
-            type: "graph",
-            sourceFormat: "graph_json",
-            title: "系统结构图",
-            nodes: [{ id: "portal", label: "Portal", x: 120, y: 210 }, { id: "askai", label: "AskAI", x: 360, y: 110 }, { id: "dralk", label: "Dralk", x: 360, y: 310 }, { id: "mcp", label: "MCP Server", x: 600, y: 210 }],
-            edges: [{ source: "portal", target: "askai", label: "提问" }, { source: "portal", target: "dralk", label: "手写" }, { source: "dralk", target: "mcp", label: "识别" }, { source: "askai", target: "mcp", label: "调用" }],
-          },
-        ],
-        actions: [],
-      });
-    }
-    return NextResponse.json(await runCanvasAgent(payload));
-  } catch (error) {
-    return NextResponse.json(
-      {
-        message: error instanceof Error ? error.message : "Agent API 请求处理失败",
-        blocks: [],
-        actions: [
-          {
-            type: "reply",
-            message: "请求处理失败，请检查输入或服务端配置。",
-          },
-        ],
-      },
-      { status: 400 },
-    );
-  }
+/**
+ * Hard cut: the one-shot /api/agent endpoint is retired.
+ * Clients must use POST /api/agent/run with conversationId + Session persistence.
+ */
+export async function POST() {
+  return NextResponse.json(
+    {
+      message:
+        "POST /api/agent has been removed. Use POST /api/agent/run with an optional conversationId.",
+      blocks: [],
+      actions: [],
+    },
+    { status: 410 },
+  );
 }

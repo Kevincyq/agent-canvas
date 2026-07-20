@@ -10,6 +10,10 @@ services:
       - "${APP_PORT:-3000}:3000"
     env_file:
       - ../.env
+    environment:
+      SQLITE_PATH: /app/data/agent-canvas.sqlite
+    volumes:
+      - agent-canvas-data:/app/data
     healthcheck:
       test:
         [
@@ -22,3 +26,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  agent-canvas-data:

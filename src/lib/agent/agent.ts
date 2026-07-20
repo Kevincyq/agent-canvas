@@ -1,4 +1,5 @@
-import { Agent, run, setTracingDisabled } from "@openai/agents";
+import { randomUUID } from "node:crypto";
+import { Agent, run, setTracingDisabled, type Session } from "@openai/agents";
 
 import { enforceHandwritingMindmapFidelity } from "@/lib/agent/diagram-fidelity";
 import { buildAgentPrompt, createFallbackResponse, parseAgentResponse } from "@/lib/agent/intent";
@@ -6,7 +7,12 @@ import {
   configureOpenAIClient,
   getConfiguredOpenAIModel,
 } from "@/lib/agent/openai-client";
-import type { AgentRequest, AgentResponse } from "@/types/agent";
+import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
+import { SqliteSession } from "@/lib/session/sqlite-session";
+import { conversationTaskStore } from "@/lib/task/task-store";
+import { titleFromFirstMessage } from "@/lib/task/task-state";
+import type { AgentRequest, AgentResponse, ChatMessage } from "@/types/agent";
+import type { AgentRunRequest, AgentRunResponse } from "@/types/agent-runtime";
 
 const AGENT_INSTRUCTIONS = `
 你是一个 AskAI + Canvas Agent，用于 Portal PoC：普通问答、手写画布意图识别、以及处理手写识别后的续聊。
@@ -27,6 +33,7 @@ const AGENT_INSTRUCTIONS = `
 12. 一个答复包含多种内容时，按内容类型返回多个 blocks；禁止为了省事把文本、公式、表格和图表全部塞进一个 Markdown block。
 13. 手写识别文本中的 quadrilateral、rectangle、circle、ellipse、line、arc 等词描述的是节点形状或连接线，是视觉元数据，不是思维导图的语义节点；只把形状词后面的文本标签作为节点。
 14. 根据手写内容生成思维导图时必须结构保真：不新增分类节点、不改写节点标签、不翻译标签、不推测额外层级。若识别文本只给出一个根节点和若干相连节点，就输出“根节点 -> 直接子节点”的一层分支。
+15. 多轮追问时优先依赖会话历史（Session），不要假设客户端会再传 recentHistory。
 
 输出必须符合：
 {
@@ -130,11 +137,14 @@ mode 规则：
 - 用户要折线/柱状/散点图：返回 render_chart，kind=line|bar|scatter，填充 series；message 中可文字解读数据。
 - 纯文字回答也放入 markdown block；message 可为简短引导语或空字符串。
 - 用户要求根据手写识别描述生成内容时：正文=Markdown、公式=LaTeX、流程图=Mermaid flowchart、思维导图=Mermaid mindmap、表格=table JSON、结构图=Graph JSON；不要默认 render_svg。
-- 结合 recentHistory 理解追问，不需要维护多个 thread。
+- 结合 Session / recentHistory 理解追问，不需要维护多个 thread。
 - 处理手写 + 语音组合时：手写结构化内容是主问题，voice_transcript 附件是补充说明或任务要求；两者冲突时先指出冲突再给出最合理处理。
 `;
 
-export async function runCanvasAgent(request: AgentRequest): Promise<AgentResponse> {
+async function invokeAgent(
+  request: AgentRequest,
+  session?: Session,
+): Promise<AgentResponse> {
   const apiKey = configureOpenAIClient();
 
   if (!apiKey) {
@@ -145,12 +155,16 @@ export async function runCanvasAgent(request: AgentRequest): Promise<AgentRespon
     setTracingDisabled(true);
 
     const agent = new Agent({
-      name: "Canvas Agent Intent Router",
+      name: "Ask AI Agent",
       model: getConfiguredOpenAIModel(),
       instructions: AGENT_INSTRUCTIONS,
     });
 
-    const result = await run(agent, buildAgentPrompt(request));
+    const result = await run(
+      agent,
+      buildAgentPrompt(request),
+      session ? { session } : undefined,
+    );
 
     const response = parseAgentResponse(String(result.finalOutput ?? ""));
 
@@ -166,4 +180,75 @@ export async function runCanvasAgent(request: AgentRequest): Promise<AgentRespon
           : "模型调用失败，已使用本地 fallback。",
     };
   }
+}
+
+/** @deprecated Prefer runAgentTurn via POST /api/agent/run. */
+export async function runCanvasAgent(request: AgentRequest): Promise<AgentResponse> {
+  return invokeAgent(request);
+}
+
+export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResponse> {
+  const conversation = conversationTaskStore.ensure(input.conversationId, {
+    userId: input.userId,
+    title: titleFromFirstMessage(input.message),
+    originSurface: "askai",
+  });
+
+  conversationTaskStore.update(conversation.id, { status: "running" });
+
+  const userMessageId = randomUUID();
+  conversationTaskStore.appendMessage({
+    conversationId: conversation.id,
+    id: userMessageId,
+    role: "user",
+    content: input.message,
+    attachments: input.attachments,
+  });
+
+  if (conversation.title === "New chat") {
+    conversationTaskStore.update(conversation.id, {
+      title: titleFromFirstMessage(input.message),
+    });
+  }
+
+  const session = new SqliteSession({ sessionId: conversation.sessionId });
+
+  // Session owns multi-turn history; do not accept client-side history windows.
+  const agentRequest: AgentRequest = {
+    message: input.message,
+    history: [],
+    canvas: input.canvas,
+    attachments: input.attachments,
+  };
+
+  const agentResponse = await invokeAgent(agentRequest, session);
+  const charts = extractRenderChartSpecs(agentResponse.actions);
+  const assistantMessageId = randomUUID();
+
+  conversationTaskStore.appendMessage({
+    conversationId: conversation.id,
+    id: assistantMessageId,
+    role: "assistant",
+    content: agentResponse.message,
+    blocks: agentResponse.blocks,
+    actions: agentResponse.actions,
+    charts,
+  });
+
+  const updated = conversationTaskStore.update(conversation.id, { status: "ready" });
+
+  return {
+    conversationId: conversation.id,
+    sessionId: conversation.sessionId,
+    status: updated?.status ?? "ready",
+    message: agentResponse.message,
+    blocks: agentResponse.blocks,
+    actions: agentResponse.actions,
+    userMessageId,
+    assistantMessageId,
+  };
+}
+
+export function getConversationMessagesForUi(conversationId: string): ChatMessage[] {
+  return conversationTaskStore.listMessages(conversationId);
 }

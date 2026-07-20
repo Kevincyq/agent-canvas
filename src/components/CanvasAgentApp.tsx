@@ -20,12 +20,15 @@ import {
 import type {
   AgentAttachment,
   AgentAction,
-  AgentResponse,
   ChatMessage,
   HwrMode,
   HwrOpenResponse,
 } from "@/types/agent";
+import type { AgentRunResponse } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
+import type { ConversationTask } from "@/types/task";
+
+const CONVERSATION_STORAGE_KEY = "askai.conversationId";
 
 const welcomeMessage: ChatMessage = {
   id: "welcome",
@@ -39,8 +42,10 @@ type CanvasDisplayMode = "inline" | "fullscreen";
 type WidgetStatus = "loading" | "ready" | "recognized" | "error";
 
 export function CanvasAgentApp() {
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage]);
   const [busy, setBusy] = useState(false);
+  const [hydrating, setHydrating] = useState(true);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasAfterMessageId, setCanvasAfterMessageId] = useState<string | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
@@ -81,6 +86,57 @@ export function CanvasAgentApp() {
       window.removeEventListener("orientationchange", handleViewportChange);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateConversation() {
+      const storedId = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
+      if (!storedId) {
+        if (!cancelled) {
+          setHydrating(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/conversations/${storedId}`);
+        if (!response.ok) {
+          window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          conversation: ConversationTask;
+          messages: ChatMessage[];
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setConversationId(payload.conversation.id);
+        setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
+      } catch {
+        // Keep welcome state if restore fails; next send creates a new conversation.
+      } finally {
+        if (!cancelled) {
+          setHydrating(false);
+        }
+      }
+    }
+
+    void hydrateConversation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function persistConversationId(nextId: string) {
+    setConversationId(nextId);
+    window.localStorage.setItem(CONVERSATION_STORAGE_KEY, nextId);
+  }
 
   const canvasSummary = useMemo(
     () =>
@@ -152,38 +208,33 @@ export function CanvasAgentApp() {
       attachments: outboundAttachments,
     };
 
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
+    setMessages((current) => [...current, userMessage]);
     setBusy(true);
     setVoiceAttachment(null);
     voiceAttachmentRef.current = null;
     voiceRecorderRef.current?.clearTranscript();
 
     try {
-      const response = await fetch("/api/agent", {
+      const response = await fetch("/api/agent/run", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          conversationId: conversationId ?? undefined,
           message: cleanedMessage,
-          history: nextMessages
-            .filter((item) => item.role === "user" || item.role === "assistant")
-            .slice(-8)
-            .map((item) => ({
-              role: item.role,
-              content: item.content,
-            })),
           canvas: canvasSummary,
           attachments: outboundAttachments,
         }),
       });
 
-      const payload = (await response.json()) as AgentResponse;
+      const payload = (await response.json()) as AgentRunResponse;
 
       if (!response.ok) {
-        throw new Error(payload.message || "Agent API 请求失败");
+        throw new Error(payload.message || "Agent run 请求失败");
       }
+
+      persistConversationId(payload.conversationId);
 
       const legacySvg = extractLegacySvgFences(payload.message);
       const legacySvgBlocks = svgSpecsToContentBlocks([
@@ -191,7 +242,7 @@ export function CanvasAgentApp() {
         ...legacySvg.specs,
       ]);
       const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: payload.assistantMessageId || crypto.randomUUID(),
         role: "assistant",
         content: legacySvg.content || (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message),
         blocks: [...payload.blocks, ...legacySvgBlocks],
@@ -199,7 +250,17 @@ export function CanvasAgentApp() {
       };
       const opensCanvas = payload.actions.some((action) => action.type === "open_handwriting_canvas");
 
-      setMessages((current) => [...current, assistantMessage]);
+      setMessages((current) => {
+        const withoutTempUser = current.filter((item) => item.id !== userMessage.id);
+        return [
+          ...withoutTempUser,
+          {
+            ...userMessage,
+            id: payload.userMessageId || userMessage.id,
+          },
+          assistantMessage,
+        ];
+      });
       if (opensCanvas) {
         setCanvasAfterMessageId(assistantMessage.id);
       }
@@ -366,7 +427,7 @@ export function CanvasAgentApp() {
         <VoiceRecorder
           ref={voiceRecorderRef}
           sessionId={voiceSessionId}
-          disabled={busy}
+          disabled={busy || hydrating}
           getElapsedMs={getCanvasElapsedMs}
           onTranscriptChange={handleVoiceTranscriptChange}
           compact={canvasDisplayMode === "fullscreen"}
@@ -384,7 +445,7 @@ export function CanvasAgentApp() {
         focusComposerSignal={composerFocusSignal}
         voiceAttachment={voiceAttachment}
         messages={messages}
-        busy={busy}
+        busy={busy || hydrating}
         onDraftChange={setComposerDraft}
         onSend={handleSend}
         onCreateDocument={handleCreateDocument}
