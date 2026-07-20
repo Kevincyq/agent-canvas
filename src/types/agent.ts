@@ -183,4 +183,14 @@ export type ChatMessage = {
   charts?: PlotSpec[];
   svgs?: SvgSpec[];
   attachments?: AgentAttachment[];
+  evidence?: Array<{
+    id: string;
+    label: string;
+    source: string;
+  }>;
+  artifacts?: Array<{
+    id: string;
+    title: string;
+    artifactType: string;
+  }>;
 };

@@ -16,6 +16,8 @@ type MessageRow = {
   attachments_json: string | null;
   charts_json: string | null;
   document_json: string | null;
+  evidence_json: string | null;
+  artifacts_json: string | null;
   created_at: string;
   sequence_no: number;
 };
@@ -38,6 +40,8 @@ function mapMessage(row: MessageRow): ConversationMessageRecord {
     attachmentsJson: row.attachments_json,
     chartsJson: row.charts_json,
     documentJson: row.document_json,
+    evidenceJson: row.evidence_json,
+    artifactsJson: row.artifacts_json,
     createdAt: row.created_at,
     sequenceNo: row.sequence_no,
   };
@@ -52,6 +56,8 @@ export function messageRecordToChatMessage(record: ConversationMessageRecord): C
     charts: parseJson<PlotSpec[]>(record.chartsJson ?? null),
     attachments: parseJson<AgentAttachment[]>(record.attachmentsJson ?? null),
     document: parseJson<ChatMessage["document"]>(record.documentJson ?? null),
+    evidence: parseJson<ChatMessage["evidence"]>(record.evidenceJson ?? null),
+    artifacts: parseJson<ChatMessage["artifacts"]>(record.artifactsJson ?? null),
   };
 }
 
@@ -64,6 +70,8 @@ export type AppendMessageInput = {
   attachments?: AgentAttachment[];
   charts?: PlotSpec[];
   document?: ChatMessage["document"];
+  evidence?: ChatMessage["evidence"];
+  artifacts?: ChatMessage["artifacts"];
   id?: string;
 };
 
@@ -84,8 +92,9 @@ export function appendConversationMessage(input: AppendMessageInput): Conversati
     db.prepare(
       `INSERT INTO conversation_messages (
         id, conversation_id, role, content, blocks_json, actions_json,
-        attachments_json, charts_json, document_json, created_at, sequence_no
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        attachments_json, charts_json, document_json, evidence_json, artifacts_json,
+        created_at, sequence_no
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.conversationId,
@@ -96,6 +105,8 @@ export function appendConversationMessage(input: AppendMessageInput): Conversati
       input.attachments ? JSON.stringify(input.attachments) : null,
       input.charts ? JSON.stringify(input.charts) : null,
       input.document ? JSON.stringify(input.document) : null,
+      input.evidence ? JSON.stringify(input.evidence) : null,
+      input.artifacts ? JSON.stringify(input.artifacts) : null,
       now,
       sequenceNo,
     );
@@ -117,6 +128,8 @@ export function appendConversationMessage(input: AppendMessageInput): Conversati
       attachmentsJson: input.attachments ? JSON.stringify(input.attachments) : null,
       chartsJson: input.charts ? JSON.stringify(input.charts) : null,
       documentJson: input.document ? JSON.stringify(input.document) : null,
+      evidenceJson: input.evidence ? JSON.stringify(input.evidence) : null,
+      artifactsJson: input.artifacts ? JSON.stringify(input.artifacts) : null,
       createdAt: now,
       sequenceNo,
     };

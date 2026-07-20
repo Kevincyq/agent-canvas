@@ -127,6 +127,84 @@ export function insertArtifact(input: {
   return { artifactId, projectId: input.projectId };
 }
 
+export type ArtifactRecord = {
+  id: string;
+  conversationId: string;
+  projectId: string | null;
+  title: string;
+  artifactType: string;
+  blocks: unknown[];
+  evidence: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ArtifactRow = {
+  id: string;
+  conversation_id: string;
+  project_id: string | null;
+  title: string;
+  artifact_type: string;
+  blocks_json: string;
+  evidence_json: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapArtifact(row: ArtifactRow): ArtifactRecord {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    projectId: row.project_id,
+    title: row.title,
+    artifactType: row.artifact_type,
+    blocks: JSON.parse(row.blocks_json) as unknown[],
+    evidence: row.evidence_json ? (JSON.parse(row.evidence_json) as unknown) : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listArtifactsByProject(projectId: string, limit = 50): ArtifactRecord[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM artifacts
+       WHERE project_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(projectId, Math.min(Math.max(limit, 1), 100)) as ArtifactRow[];
+  return rows.map(mapArtifact);
+}
+
+export function getArtifactById(id: string): ArtifactRecord | null {
+  const row = getDb()
+    .prepare("SELECT * FROM artifacts WHERE id = ?")
+    .get(id) as ArtifactRow | undefined;
+  return row ? mapArtifact(row) : null;
+}
+
+export function listProjects(userId?: string): ProjectRecord[] {
+  const rows = (
+    userId
+      ? getDb()
+          .prepare(
+            `SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC`,
+          )
+          .all(userId)
+      : getDb().prepare(`SELECT * FROM projects ORDER BY updated_at DESC`).all()
+  ) as ProjectRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    instructions: row.instructions,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
 export function insertMockTodo(input: {
   title: string;
   dueAt?: string;

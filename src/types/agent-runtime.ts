@@ -50,6 +50,7 @@ export const AgentRunRequestSchema = z.object({
   attachments: z.array(AgentAttachmentSchema).default([]),
   dralkContext: AgentRunDralkContextSchema.optional(),
   userId: z.string().min(1).max(100).optional(),
+  projectId: z.string().min(1).nullable().optional(),
 });
 
 export type AgentRunRequest = {
@@ -64,6 +65,7 @@ export type AgentRunRequest = {
   attachments: z.infer<typeof AgentAttachmentSchema>[];
   dralkContext?: Partial<DralkQueryPayload>;
   userId?: string;
+  projectId?: string | null;
 };
 
 export const AgentRunResponseSchema = z.object({

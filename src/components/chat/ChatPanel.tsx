@@ -6,6 +6,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApprovalCardList } from "@/components/chat/ApprovalCardList";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { EvidenceList } from "@/components/chat/EvidenceList";
+import { ToolReceiptCard } from "@/components/chat/ToolReceiptCard";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import { PlotCard } from "@/components/chart/PlotCard";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
@@ -35,6 +37,7 @@ type ChatPanelProps = {
     callId: string;
     decision: "approve" | "reject";
   }) => Promise<void>;
+  onOpenArtifact?: (artifactId: string) => void;
 };
 
 export function ChatPanel({
@@ -53,6 +56,7 @@ export function ChatPanel({
   onCreateDocument,
   onUpdateMessageBlocks,
   onApprovalDecide,
+  onOpenArtifact,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +136,16 @@ export function ChatPanel({
                 <ContentBlockCard block={block} onEdit={() => setEditingMessageId(message.id)} />
               </div>
             ))}
+            {message.role === "assistant" ? (
+              <>
+                <EvidenceList evidence={message.evidence} />
+                <ToolReceiptCard
+                  evidence={message.evidence}
+                  artifacts={message.artifacts}
+                  onOpenArtifact={onOpenArtifact}
+                />
+              </>
+            ) : null}
             {message.charts?.map((spec, index) => (
               <div key={`${message.id}-chart-${index}`} className="message-chart-slot">
                 <PlotCard spec={spec} />

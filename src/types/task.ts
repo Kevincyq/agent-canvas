@@ -23,6 +23,8 @@ export const ConversationMessageSchema = z.object({
   attachmentsJson: z.string().nullable().optional(),
   chartsJson: z.string().nullable().optional(),
   documentJson: z.string().nullable().optional(),
+  evidenceJson: z.string().nullable().optional(),
+  artifactsJson: z.string().nullable().optional(),
   createdAt: z.string(),
   sequenceNo: z.number().int().nonnegative(),
 });

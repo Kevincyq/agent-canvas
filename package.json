@@ -18,7 +18,8 @@
     "spike:m2": "node --env-file=.env.local scripts/m2-agent-core-spike.mjs",
     "spike:m3": "node --env-file=.env.local scripts/m3-tool-loop-spike.mjs",
     "spike:m4": "node --env-file=.env.local scripts/m4-dralk-workflow-spike.mjs",
-    "spike:m5": "node --env-file=.env.local scripts/m5-approval-resume-spike.mjs"
+    "spike:m5": "node --env-file=.env.local scripts/m5-approval-resume-spike.mjs",
+    "spike:m6": "node --env-file=.env.local scripts/m6-project-ux-spike.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.4",

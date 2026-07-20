@@ -75,3 +75,75 @@ export async function withToolRunLogging<T>(
     return failed;
   }
 }
+
+export type ToolRunRecord = {
+  id: string;
+  conversationId: string;
+  requestId: string;
+  toolName: string;
+  argumentsJson: string;
+  resultJson: string | null;
+  status: ToolRunStatus;
+  startedAt: string;
+  completedAt: string | null;
+};
+
+type ToolRunRow = {
+  id: string;
+  conversation_id: string;
+  request_id: string;
+  tool_name: string;
+  arguments_json: string;
+  result_json: string | null;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+};
+
+export function listToolRunsByConversation(
+  conversationId: string,
+  limit = 20,
+): ToolRunRecord[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM tool_runs
+       WHERE conversation_id = ?
+       ORDER BY started_at DESC
+       LIMIT ?`,
+    )
+    .all(conversationId, Math.min(Math.max(limit, 1), 100)) as ToolRunRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    conversationId: row.conversation_id,
+    requestId: row.request_id,
+    toolName: row.tool_name,
+    argumentsJson: row.arguments_json,
+    resultJson: row.result_json,
+    status: row.status as ToolRunStatus,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }));
+}
+
+export function listToolRunsByRequest(requestId: string): ToolRunRecord[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM tool_runs
+       WHERE request_id = ?
+       ORDER BY started_at ASC`,
+    )
+    .all(requestId) as ToolRunRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    conversationId: row.conversation_id,
+    requestId: row.request_id,
+    toolName: row.tool_name,
+    argumentsJson: row.arguments_json,
+    resultJson: row.result_json,
+    status: row.status as ToolRunStatus,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }));
+}

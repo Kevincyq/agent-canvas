@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
+import { ProjectNav, type ProjectNavItem } from "@/components/nav/ProjectNav";
 import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/voice/VoiceRecorder";
 import { createCanvasSummary } from "@/lib/canvas/actions";
 import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
@@ -50,6 +51,15 @@ export function CanvasAgentApp() {
   const [hydrating, setHydrating] = useState(true);
   const [activeWorkflow, setActiveWorkflow] = useState<DralkWorkflowRecord | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalCard[]>([]);
+  const [projects, setProjects] = useState<ProjectNavItem[]>([]);
+  const [recentConversations, setRecentConversations] = useState<ConversationTask[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [selectedArtifact, setSelectedArtifact] = useState<{
+    id: string;
+    title: string;
+    artifactType: string;
+    blocks: unknown[];
+  } | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasAfterMessageId, setCanvasAfterMessageId] = useState<string | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
@@ -94,6 +104,42 @@ export function CanvasAgentApp() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadNav() {
+      try {
+        const [projectsResponse, conversationsResponse] = await Promise.all([
+          fetch("/api/projects"),
+          fetch("/api/conversations?limit=20"),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        if (projectsResponse.ok) {
+          const payload = (await projectsResponse.json()) as {
+            projects: Array<{
+              id: string;
+              name: string;
+              sources?: Array<unknown>;
+            }>;
+          };
+          setProjects(
+            (payload.projects ?? []).map((project) => ({
+              id: project.id,
+              name: project.name,
+              sourceCount: project.sources?.length ?? 0,
+            })),
+          );
+        }
+        if (conversationsResponse.ok) {
+          const payload = (await conversationsResponse.json()) as {
+            conversations: ConversationTask[];
+          };
+          setRecentConversations(payload.conversations ?? []);
+        }
+      } catch {
+        // Nav is best-effort; chat still works.
+      }
+    }
+
     async function hydrateConversation() {
       const storedId = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
       if (!storedId) {
@@ -122,6 +168,7 @@ export function CanvasAgentApp() {
         }
 
         setConversationId(payload.conversation.id);
+        setActiveProjectId(payload.conversation.projectId);
         setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
         setPendingApprovals(payload.approvals ?? []);
 
@@ -159,6 +206,7 @@ export function CanvasAgentApp() {
       }
     }
 
+    void loadNav();
     void hydrateConversation();
 
     return () => {
@@ -169,6 +217,170 @@ export function CanvasAgentApp() {
   function persistConversationId(nextId: string) {
     setConversationId(nextId);
     window.localStorage.setItem(CONVERSATION_STORAGE_KEY, nextId);
+  }
+
+  async function refreshRecentConversations() {
+    try {
+      const response = await fetch("/api/conversations?limit=20");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { conversations: ConversationTask[] };
+      setRecentConversations(payload.conversations ?? []);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadConversationById(nextId: string) {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/conversations/${nextId}`);
+      if (!response.ok) {
+        throw new Error("加载对话失败");
+      }
+      const payload = (await response.json()) as {
+        conversation: ConversationTask;
+        messages: ChatMessage[];
+        activeWorkflow?: DralkWorkflowRecord | null;
+        approvals?: ApprovalCard[];
+      };
+      persistConversationId(payload.conversation.id);
+      setActiveProjectId(payload.conversation.projectId);
+      setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
+      setPendingApprovals(payload.approvals ?? []);
+      setSelectedArtifact(null);
+      setActiveWorkflow(payload.activeWorkflow ?? null);
+      setCanvasOpen(Boolean(payload.activeWorkflow));
+      if (!payload.activeWorkflow) {
+        window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+      }
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "加载对话失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleNewChat() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "New chat",
+          projectId: activeProjectId,
+          originSurface: "askai",
+        }),
+      });
+      const payload = (await response.json()) as { conversation?: ConversationTask; message?: string };
+      if (!response.ok || !payload.conversation) {
+        throw new Error(payload.message || "创建对话失败");
+      }
+      persistConversationId(payload.conversation.id);
+      setActiveProjectId(payload.conversation.projectId);
+      setMessages([welcomeMessage]);
+      setPendingApprovals([]);
+      setActiveWorkflow(null);
+      setCanvasOpen(false);
+      setSelectedArtifact(null);
+      window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+      await refreshRecentConversations();
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "创建对话失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSelectProject(projectId: string) {
+    setActiveProjectId(projectId);
+    setBusy(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "New chat",
+          projectId,
+          originSurface: "askai",
+        }),
+      });
+      const payload = (await response.json()) as { conversation?: ConversationTask; message?: string };
+      if (!response.ok || !payload.conversation) {
+        throw new Error(payload.message || "创建项目对话失败");
+      }
+      persistConversationId(payload.conversation.id);
+      setMessages([
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `已进入项目上下文。当前 Project：${
+            projects.find((item) => item.id === projectId)?.name ?? projectId
+          }。你可以继续提问、检索 Sources 或保存 Artifact。`,
+        },
+      ]);
+      setPendingApprovals([]);
+      setActiveWorkflow(null);
+      setCanvasOpen(false);
+      setSelectedArtifact(null);
+      window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+      await refreshRecentConversations();
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "切换项目失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleOpenArtifact(artifactId: string) {
+    try {
+      const response = await fetch(`/api/artifacts/${artifactId}`);
+      const payload = (await response.json()) as {
+        artifact?: {
+          id: string;
+          title: string;
+          artifactType: string;
+          blocks: unknown[];
+        };
+        message?: string;
+      };
+      if (!response.ok || !payload.artifact) {
+        throw new Error(payload.message || "打开 Artifact 失败");
+      }
+      setSelectedArtifact(payload.artifact);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "打开 Artifact 失败",
+        },
+      ]);
+    }
   }
 
   async function postDralkEvent(
@@ -390,6 +602,7 @@ export function CanvasAgentApp() {
         },
         body: JSON.stringify({
           conversationId: conversationId ?? undefined,
+          projectId: activeProjectId,
           message: cleanedMessage,
           canvas: canvasSummary,
           attachments: outboundAttachments,
@@ -418,6 +631,7 @@ export function CanvasAgentApp() {
 
       persistConversationId(payload.conversationId);
       setPendingApprovals(payload.approvals ?? []);
+      await refreshRecentConversations();
 
       const legacySvg = extractLegacySvgFences(payload.message);
       const legacySvgBlocks = svgSpecsToContentBlocks([
@@ -430,6 +644,8 @@ export function CanvasAgentApp() {
         content: legacySvg.content || (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message),
         blocks: [...payload.blocks, ...legacySvgBlocks],
         charts: extractRenderChartSpecs(payload.actions),
+        evidence: payload.evidence,
+        artifacts: payload.artifacts,
       };
 
       setMessages((current) => {
@@ -531,8 +747,11 @@ export function CanvasAgentApp() {
         content: payload.message,
         blocks: payload.blocks,
         charts: extractRenderChartSpecs(payload.actions),
+        evidence: payload.evidence,
+        artifacts: payload.artifacts,
       };
       setMessages((current) => [...current, assistantMessage]);
+      await refreshRecentConversations();
 
       if (payload.workflowRequest) {
         await openCanvasFromWorkflowRequest(payload.workflowRequest, assistantMessage.id);
@@ -732,6 +951,22 @@ export function CanvasAgentApp() {
 
   return (
     <main className="app-shell">
+      <ProjectNav
+        projects={projects}
+        recent={recentConversations}
+        activeConversationId={conversationId}
+        activeProjectId={activeProjectId}
+        busy={busy || hydrating}
+        onNewChat={() => {
+          void handleNewChat();
+        }}
+        onSelectConversation={(id) => {
+          void loadConversationById(id);
+        }}
+        onSelectProject={(id) => {
+          void handleSelectProject(id);
+        }}
+      />
       <ChatPanel
         canvasSlot={canvasSlot}
         canvasAfterMessageId={canvasAfterMessageId}
@@ -748,7 +983,26 @@ export function CanvasAgentApp() {
         onCreateDocument={handleCreateDocument}
         onUpdateMessageBlocks={handleUpdateMessageBlocks}
         onApprovalDecide={handleApprovalDecide}
+        onOpenArtifact={(artifactId) => {
+          void handleOpenArtifact(artifactId);
+        }}
       />
+      {selectedArtifact ? (
+        <aside className="artifact-drawer" aria-label="Artifact 详情">
+          <header className="artifact-drawer-header">
+            <div>
+              <strong>{selectedArtifact.title}</strong>
+              <small>{selectedArtifact.artifactType}</small>
+            </div>
+            <button type="button" onClick={() => setSelectedArtifact(null)}>
+              关闭
+            </button>
+          </header>
+          <pre className="artifact-drawer-body">
+            {JSON.stringify(selectedArtifact.blocks, null, 2)}
+          </pre>
+        </aside>
+      ) : null}
     </main>
   );
 }
