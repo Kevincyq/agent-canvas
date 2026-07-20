@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getPendingApprovalCards } from "@/lib/agent/runner";
 import { conversationTaskStore } from "@/lib/task/task-store";
 import { getActiveDralkWorkflow } from "@/lib/workflows/dralk";
 import { PatchConversationRequestSchema } from "@/types/task";
@@ -20,10 +21,12 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const messages = conversationTaskStore.listMessages(id);
     const activeWorkflow = getActiveDralkWorkflow(id);
+    const approvals = getPendingApprovalCards(id);
     return NextResponse.json({
       conversation,
       messages,
       activeWorkflow,
+      approvals,
     });
   } catch (error) {
     return NextResponse.json(

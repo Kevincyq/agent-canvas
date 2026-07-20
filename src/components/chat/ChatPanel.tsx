@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import type { ReactNode } from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
+import { ApprovalCardList } from "@/components/chat/ApprovalCardList";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import { PlotCard } from "@/components/chart/PlotCard";
@@ -12,6 +13,7 @@ import { ContentBlockCard } from "@/components/content/ContentBlockCard";
 import { UnifiedDocumentEditor } from "@/components/editor/UnifiedDocumentEditor";
 import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
 import type { ChatMessage, AgentAttachment } from "@/types/agent";
+import type { ApprovalCard } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
 
 type ChatPanelProps = {
@@ -23,11 +25,16 @@ type ChatPanelProps = {
   focusComposerSignal: number;
   voiceAttachment?: AgentAttachment | null;
   workflowStatusLabel?: string | null;
+  approvals?: ApprovalCard[];
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
   onStartDralk?: () => Promise<void>;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
   onUpdateMessageBlocks: (messageId: string, blocks: ContentBlock[]) => void;
+  onApprovalDecide?: (input: {
+    callId: string;
+    decision: "approve" | "reject";
+  }) => Promise<void>;
 };
 
 export function ChatPanel({
@@ -39,11 +46,13 @@ export function ChatPanel({
   focusComposerSignal,
   voiceAttachment = null,
   workflowStatusLabel = null,
+  approvals = [],
   onDraftChange,
   onSend,
   onStartDralk,
   onCreateDocument,
   onUpdateMessageBlocks,
+  onApprovalDecide,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -142,6 +151,14 @@ export function ChatPanel({
           <div className="message-canvas-slot">{canvasSlot}</div>
         ) : null}
       </div>
+
+      {onApprovalDecide ? (
+        <ApprovalCardList
+          approvals={approvals}
+          busy={busy}
+          onDecide={onApprovalDecide}
+        />
+      ) : null}
 
       <form className="composer" onSubmit={handleSubmit}>
         <div className="composer-toolbar">

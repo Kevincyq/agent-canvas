@@ -22,6 +22,18 @@ export const AgentRunArtifactRefSchema = z.object({
   artifactType: z.string(),
 });
 
+export const ApprovalCardSchema = z.object({
+  id: z.string(),
+  runStateId: z.string(),
+  callId: z.string(),
+  toolName: z.string(),
+  argumentsJson: z.string(),
+  riskLevel: z.string(),
+  createdAt: z.string(),
+});
+
+export type ApprovalCard = z.infer<typeof ApprovalCardSchema>;
+
 export const AgentRunDralkContextSchema = DralkQueryPayloadSchema.partial();
 
 export const AgentRunRequestSchema = z.object({
@@ -68,6 +80,8 @@ export const AgentRunResponseSchema = z.object({
   artifacts: z.array(AgentRunArtifactRefSchema).optional(),
   requestId: z.string().optional(),
   workflowRequest: WorkflowRequestSchema.optional(),
+  runStateId: z.string().optional(),
+  approvals: z.array(ApprovalCardSchema).optional(),
 });
 
 export type AgentRunResponse = {
@@ -84,4 +98,23 @@ export type AgentRunResponse = {
   artifacts?: z.infer<typeof AgentRunArtifactRefSchema>[];
   requestId?: string;
   workflowRequest?: WorkflowRequest;
+  runStateId?: string;
+  approvals?: ApprovalCard[];
 };
+
+export const AgentResumeRequestSchema = z.object({
+  conversationId: z.string().min(1),
+  runStateId: z.string().min(1).optional(),
+  decisions: z
+    .array(
+      z.object({
+        callId: z.string().min(1),
+        decision: z.enum(["approve", "reject"]),
+        message: z.string().optional(),
+      }),
+    )
+    .min(1),
+  userId: z.string().min(1).max(100).optional(),
+});
+
+export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>;

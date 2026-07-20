@@ -24,7 +24,7 @@ import type {
   HwrMode,
   HwrOpenResponse,
 } from "@/types/agent";
-import type { AgentRunResponse } from "@/types/agent-runtime";
+import type { AgentRunResponse, ApprovalCard } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
 import type { ConversationTask } from "@/types/task";
 import type { DralkWorkflowRecord, WorkflowRequest } from "@/types/workflow";
@@ -49,6 +49,7 @@ export function CanvasAgentApp() {
   const [busy, setBusy] = useState(false);
   const [hydrating, setHydrating] = useState(true);
   const [activeWorkflow, setActiveWorkflow] = useState<DralkWorkflowRecord | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalCard[]>([]);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasAfterMessageId, setCanvasAfterMessageId] = useState<string | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
@@ -113,6 +114,7 @@ export function CanvasAgentApp() {
           conversation: ConversationTask;
           messages: ChatMessage[];
           activeWorkflow?: DralkWorkflowRecord | null;
+          approvals?: ApprovalCard[];
         };
 
         if (cancelled) {
@@ -121,6 +123,7 @@ export function CanvasAgentApp() {
 
         setConversationId(payload.conversation.id);
         setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
+        setPendingApprovals(payload.approvals ?? []);
 
         if (payload.activeWorkflow) {
           setActiveWorkflow(payload.activeWorkflow);
@@ -414,6 +417,7 @@ export function CanvasAgentApp() {
       }
 
       persistConversationId(payload.conversationId);
+      setPendingApprovals(payload.approvals ?? []);
 
       const legacySvg = extractLegacySvgFences(payload.message);
       const legacySvgBlocks = svgSpecsToContentBlocks([
@@ -481,6 +485,65 @@ export function CanvasAgentApp() {
           id: crypto.randomUUID(),
           role: "system",
           content: error instanceof Error ? error.message : "未知错误",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApprovalDecide(input: {
+    callId: string;
+    decision: "approve" | "reject";
+  }) {
+    if (!conversationId || pendingApprovals.length === 0) {
+      return;
+    }
+
+    const runStateId = pendingApprovals[0]?.runStateId;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/agent/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId,
+          runStateId,
+          decisions: [
+            {
+              callId: input.callId,
+              decision: input.decision,
+              message:
+                input.decision === "reject" ? "用户拒绝了该待办写入。" : undefined,
+            },
+          ],
+        }),
+      });
+      const payload = (await response.json()) as AgentRunResponse;
+      if (!response.ok) {
+        throw new Error(payload.message || "审批恢复失败");
+      }
+
+      setPendingApprovals(payload.approvals ?? []);
+      const assistantMessage: ChatMessage = {
+        id: payload.assistantMessageId || crypto.randomUUID(),
+        role: "assistant",
+        content: payload.message,
+        blocks: payload.blocks,
+        charts: extractRenderChartSpecs(payload.actions),
+      };
+      setMessages((current) => [...current, assistantMessage]);
+
+      if (payload.workflowRequest) {
+        await openCanvasFromWorkflowRequest(payload.workflowRequest, assistantMessage.id);
+      }
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "审批恢复失败",
         },
       ]);
     } finally {
@@ -676,6 +739,7 @@ export function CanvasAgentApp() {
         focusComposerSignal={composerFocusSignal}
         voiceAttachment={voiceAttachment}
         workflowStatusLabel={workflowStatusLabel}
+        approvals={pendingApprovals}
         messages={messages}
         busy={busy || hydrating}
         onDraftChange={setComposerDraft}
@@ -683,6 +747,7 @@ export function CanvasAgentApp() {
         onStartDralk={handleStartDralk}
         onCreateDocument={handleCreateDocument}
         onUpdateMessageBlocks={handleUpdateMessageBlocks}
+        onApprovalDecide={handleApprovalDecide}
       />
     </main>
   );
