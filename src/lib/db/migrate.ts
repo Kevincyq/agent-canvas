@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { MIGRATION_001_INIT } from "@/lib/db/migrations/001_init";
 import { MIGRATION_002_TOOL_FIXTURES } from "@/lib/db/migrations/002_tool_fixtures";
 import { MIGRATION_003_MESSAGE_EVIDENCE } from "@/lib/db/migrations/003_message_evidence";
+import { MIGRATION_004_AUDIT_EVENTS } from "@/lib/db/migrations/004_audit_events";
 
 type Migration = {
   id: string;
@@ -21,6 +22,10 @@ const MIGRATIONS: Migration[] = [
   {
     id: "003_message_evidence",
     sql: MIGRATION_003_MESSAGE_EVIDENCE,
+  },
+  {
+    id: "004_audit_events",
+    sql: MIGRATION_004_AUDIT_EVENTS,
   },
 ];
 

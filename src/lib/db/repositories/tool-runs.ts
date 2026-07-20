@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { getDb } from "@/lib/db/client";
+import { writeAuditEvent } from "@/lib/observability/audit";
+import { redactValue } from "@/lib/observability/redact";
 import { createToolReceipt, type ToolReceipt } from "@/types/tool-receipt";
 
 export type ToolRunStatus = "running" | "completed" | "failed";
@@ -23,7 +25,7 @@ export function startToolRun(input: {
       input.conversationId,
       input.requestId,
       input.toolName,
-      JSON.stringify(input.arguments ?? {}),
+      JSON.stringify(redactValue(input.arguments ?? {})),
       new Date().toISOString(),
     );
   return id;
@@ -40,7 +42,7 @@ export function completeToolRun(
        SET status = ?, result_json = ?, completed_at = ?
        WHERE id = ?`,
     )
-    .run(status, JSON.stringify(result ?? null), new Date().toISOString(), id);
+    .run(status, JSON.stringify(redactValue(result ?? null)), new Date().toISOString(), id);
 }
 
 export async function withToolRunLogging<T>(
@@ -52,10 +54,23 @@ export async function withToolRunLogging<T>(
   },
   execute: () => Promise<ToolReceipt<T>>,
 ): Promise<ToolReceipt<T>> {
+  const startedAt = Date.now();
   const runId = startToolRun(input);
   try {
     const receipt = await execute();
     completeToolRun(runId, receipt.ok ? "completed" : "failed", receipt);
+    writeAuditEvent({
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+      eventType: "tool.run",
+      payload: {
+        toolName: input.toolName,
+        toolRunId: runId,
+        ok: receipt.ok,
+        latencyMs: Date.now() - startedAt,
+        errorCode: receipt.error?.code ?? null,
+      },
+    });
     return {
       ...receipt,
       executionId: receipt.executionId || runId,
@@ -72,6 +87,18 @@ export async function withToolRunLogging<T>(
       },
     });
     completeToolRun(runId, "failed", failed);
+    writeAuditEvent({
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+      eventType: "tool.run",
+      payload: {
+        toolName: input.toolName,
+        toolRunId: runId,
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        errorCode: "TOOL_EXCEPTION",
+      },
+    });
     return failed;
   }
 }

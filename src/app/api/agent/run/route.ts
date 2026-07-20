@@ -1,14 +1,36 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { runAgentTurn } from "@/lib/agent/agent";
+import { writeAuditEvent } from "@/lib/observability/audit";
+import { resolvePortalUserContext } from "@/lib/portal/user-context";
 import { AgentRunRequestSchema } from "@/types/agent-runtime";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
   try {
     const body = (await request.json()) as unknown;
     const payload = AgentRunRequestSchema.parse(body);
+    const portal = resolvePortalUserContext({
+      headers: request.headers,
+      bodyUserId: payload.userId,
+    });
+
+    writeAuditEvent({
+      requestId,
+      conversationId: payload.conversationId,
+      userId: portal.userId,
+      tenantId: portal.tenantId,
+      eventType: "agent.run.start",
+      payload: {
+        messagePreview: payload.message.slice(0, 120),
+        hasAttachments: payload.attachments.length > 0,
+        projectId: payload.projectId ?? null,
+        portalSource: portal.source,
+      },
+    });
 
     if (process.env.NODE_ENV === "development" && payload.message.trim() === "/typed-blocks-demo") {
       const { conversationTaskStore } = await import("@/lib/task/task-store");
@@ -16,6 +38,7 @@ export async function POST(request: Request) {
       const conversation = conversationTaskStore.ensure(payload.conversationId, {
         title: titleFromFirstMessage(payload.message),
         originSurface: "askai",
+        userId: portal.userId,
       });
 
       const demoBlocks = [
@@ -106,8 +129,36 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json(await runAgentTurn(payload));
+    const result = await runAgentTurn({
+      ...payload,
+      userId: portal.userId,
+    });
+
+    writeAuditEvent({
+      requestId: result.requestId ?? requestId,
+      conversationId: result.conversationId,
+      userId: portal.userId,
+      tenantId: portal.tenantId,
+      eventType: "agent.run.end",
+      payload: {
+        status: result.status,
+        outputStatus: result.outputStatus ?? null,
+        approvalCount: result.approvals?.length ?? 0,
+        evidenceCount: result.evidence?.length ?? 0,
+        artifactCount: result.artifacts?.length ?? 0,
+      },
+    });
+
+    return NextResponse.json(result);
   } catch (error) {
+    writeAuditEvent({
+      requestId,
+      eventType: "agent.run.end",
+      payload: {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Agent run 请求处理失败",
+      },
+    });
     return NextResponse.json(
       {
         conversationId: "",
