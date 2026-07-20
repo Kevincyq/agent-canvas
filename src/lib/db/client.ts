@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { getOptionalEnv } from "@/lib/env";
 import { runMigrations } from "@/lib/db/migrate";
+import { ensureSeedData, resetSeedFlagForTests } from "@/lib/services/seed";
 
 const DEFAULT_DB_PATH = "./data/agent-canvas.sqlite";
 
@@ -21,6 +22,7 @@ export function getDb(options?: { path?: string; skipMigrate?: boolean }): Datab
   if (dbSingleton && !options?.path) {
     if (!options?.skipMigrate && !migrationsApplied) {
       runMigrations(dbSingleton);
+      ensureSeedData(dbSingleton);
       migrationsApplied = true;
     }
     return dbSingleton;
@@ -34,6 +36,7 @@ export function getDb(options?: { path?: string; skipMigrate?: boolean }): Datab
 
   if (!options?.skipMigrate) {
     runMigrations(db);
+    ensureSeedData(db);
     if (!options?.path) {
       migrationsApplied = true;
     }
@@ -52,6 +55,7 @@ export function closeDb(): void {
     dbSingleton.close();
     dbSingleton = null;
     migrationsApplied = false;
+    resetSeedFlagForTests();
   }
 }
 

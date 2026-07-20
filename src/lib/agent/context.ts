@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { createStubServiceAdapters, type ServiceAdapters } from "@/lib/services/adapters";
+import type { ServiceAdapters } from "@/lib/services/adapters";
+import { createMockServiceAdapters } from "@/lib/services/mock";
+import { SEED_PROJECT } from "@/lib/services/mock/fixtures";
 
 export type PermissionSnapshot = {
   canReadProject: boolean;
@@ -33,6 +35,8 @@ export type CreateAgentContextInput = {
   permissions?: Partial<PermissionSnapshot>;
   services?: ServiceAdapters;
   requestId?: string;
+  /** When true, omit default seed projectId (general chat). */
+  allowEmptyProject?: boolean;
 };
 
 const DEFAULT_PERMISSIONS: PermissionSnapshot = {
@@ -47,18 +51,24 @@ const DEFAULT_PERMISSIONS: PermissionSnapshot = {
  * Private credentials and adapter internals must never be serialized into RunState/prompts.
  */
 export function createAgentContext(input: CreateAgentContextInput): AgentContext {
+  const projectId =
+    input.projectId === null
+      ? undefined
+      : (input.projectId ??
+        (input.allowEmptyProject ? undefined : SEED_PROJECT.id));
+
   return {
     userId: input.userId ?? "local-user",
     tenantId: input.tenantId ?? "local-tenant",
     conversationId: input.conversationId,
-    projectId: input.projectId ?? undefined,
+    projectId,
     currentSurface: input.currentSurface ?? "ask_ai",
     selectedSourceIds: input.selectedSourceIds ?? [],
     permissions: {
       ...DEFAULT_PERMISSIONS,
       ...input.permissions,
     },
-    services: input.services ?? createStubServiceAdapters(),
+    services: input.services ?? createMockServiceAdapters(),
     requestId: input.requestId ?? randomUUID(),
   };
 }

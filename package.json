@@ -15,7 +15,8 @@
     "deploy:staging": "bash deploy/scripts/local-deploy.sh",
     "spike:m0": "node --env-file=.env.local scripts/m0-turing-spike.mjs",
     "spike:m1": "node --env-file=.env.local scripts/m1-session-resume.mjs",
-    "spike:m2": "node --env-file=.env.local scripts/m2-agent-core-spike.mjs"
+    "spike:m2": "node --env-file=.env.local scripts/m2-agent-core-spike.mjs",
+    "spike:m3": "node --env-file=.env.local scripts/m3-tool-loop-spike.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.4",

@@ -44,7 +44,7 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
   const context = createAgentContext({
     userId: input.userId ?? conversation.userId,
     conversationId: conversation.id,
-    projectId: conversation.projectId,
+    projectId: conversation.projectId ?? undefined,
     currentSurface: "ask_ai",
   });
 

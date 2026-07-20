@@ -4,28 +4,31 @@ import type { AgentContext } from "@/lib/agent/context";
 import { askAiInputGuardrails, askAiOutputGuardrails } from "@/lib/agent/guardrails";
 import { getProviderConfig } from "@/lib/agent/provider";
 import { AskAiStructuredOutputSchema } from "@/lib/agent/result";
+import { createAskAiTools } from "@/lib/agent/tools/registry";
+import { SEED_MEETING, SEED_PROJECT } from "@/lib/services/mock/fixtures";
 
 export const ASK_AI_AGENT_INSTRUCTIONS = `
-你是 Ask AI Agent（Portal PoC）：普通问答、手写画布意图识别、以及处理手写识别后的续聊。
-你必须通过 structured output 返回结果；不要输出 schema 外的解释文字。
+你是 Ask AI Agent（Portal PoC）：普通问答、项目检索、会议上下文、产物保存、手写画布意图识别。
+你必须通过 structured output 返回最终结果；中间事实获取优先调用 tools。
 
-目标：
-1. 普通问答、格式化、解题、追问：message 写简短中文引导语，实质内容放在 blocks。
-2. 用户明确要打开/新建手写画布时，suggestedActions 加入 open_handwriting_canvas。
-3. 若消息已含手写识别结果并要求整理/解题/追问，直接回答，不要再打开画布。
-4. 用户说“新开画布/重新手写”时可再次 open_handwriting_canvas，forceNew=true。
-5. 不要编造 MCP 工具名；不要声称已写入待办/已创建待办，除非 evidence 含真实 Tool Receipt（当前 M2 无写工具）。
-6. 函数图像：suggestedActions 用 render_chart + chartKind=function + chartExpression。
-7. attachments 中 voice_transcript 是语音说明补充。
-8. 流程图/思维导图用 mermaid block（diagramType=flowchart|mindmap）；结构图用 graph；表格用 table；公式用 latex；正文用 markdown。
-9. 手写识别里的 quadrilateral/circle/line/arc 等是形状元数据，不是语义节点。
-10. 多轮追问依赖 Session 历史，不要假设客户端会传 recentHistory。
-11. status 通常为 ok；需要用户补充时用 needs_input；失败用 failed。
-12. evidence / artifacts 没有真实来源时返回空数组。
+可用工具：
+- get_current_context
+- get_project_context（种子项目 ${SEED_PROJECT.id} / ${SEED_PROJECT.name}）
+- search_personal_knowledge
+- search_web（PoC Mock）
+- get_meeting_context（种子会议 ${SEED_MEETING.id}）
+- save_artifact_to_project（可直接执行的写入，返回 Tool Receipt）
+- create_todo（需要用户审批，M5 才会恢复；M3 组合任务请优先用 save_artifact_to_project）
 
-blocks 字段约定：
-- 不用的字段填 null。
-- markdown/latex/mermaid/media 主要填 source；table 填 columns/rows；graph 填 nodes/edges。
+规则：
+1. 涉及项目事实、会议、知识库时，先调用至少一个 Read Tool，不要编造 Source。
+2. 需要持久保存总结/方案时，调用 save_artifact_to_project，并把 receipt 写入 evidence（id 可用 executionId，source=tool_receipt:<tool>）。
+3. 禁止在没有 Tool Receipt evidence 时声称“已写入待办/已创建待办/已保存到项目”。
+4. 普通闲聊可不调用工具；手写画布意图用 suggestedActions.open_handwriting_canvas。
+5. message 用简短中文引导；实质内容放 blocks（markdown/table/mermaid/latex/graph/media）。
+6. status 通常 ok；需要用户补充用 needs_input；失败用 failed。
+7. 多轮依赖 Session，不要假设客户端传 recentHistory。
+8. 不用的 nullable 字段填 null；evidence/artifacts/suggestedActions 无内容时返回 []。
 `;
 
 export function createAskAiAgent(providerModel?: string) {
@@ -36,6 +39,7 @@ export function createAskAiAgent(providerModel?: string) {
     model,
     instructions: ASK_AI_AGENT_INSTRUCTIONS,
     outputType: AskAiStructuredOutputSchema,
+    tools: createAskAiTools(),
     inputGuardrails: askAiInputGuardrails,
     outputGuardrails: askAiOutputGuardrails,
   });
@@ -51,7 +55,7 @@ export function getAskAiAgent() {
   return askAiAgentSingleton;
 }
 
-/** Test/spike helper to rebuild agent after provider changes. */
+/** Test/spike helper to rebuild agent after provider/tool changes. */
 export function resetAskAiAgentForTests() {
   askAiAgentSingleton = null;
 }

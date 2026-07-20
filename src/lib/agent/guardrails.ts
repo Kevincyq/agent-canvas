@@ -46,7 +46,6 @@ export const oversizedInputGuardrail: InputGuardrail = {
 
 /**
  * Models must not claim write success without a Tool Receipt (M3+).
- * M2 blocks fabricated todo/write confirmations in the final message.
  */
 export const unverifiedWriteClaimGuardrail: OutputGuardrail<
   typeof AskAiStructuredOutputSchema,
@@ -57,9 +56,13 @@ export const unverifiedWriteClaimGuardrail: OutputGuardrail<
     const output = agentOutput as AskAiStructuredOutput;
     const text = `${output.message}\n${JSON.stringify(output.blocks)}`;
     const claimsWrite =
-      /已写入待办|已创建待办|todo (created|written)|successfully wrote/i.test(text);
+      /已写入待办|已创建待办|已保存到项目|todo (created|written)|successfully wrote|saved to project/i.test(
+        text,
+      );
     const hasReceiptEvidence = output.evidence.some((item) =>
-      /tool_receipt|create_todo|todo/i.test(`${item.id} ${item.source} ${item.label}`),
+      /tool_receipt|create_todo|save_artifact|todo|artifact/i.test(
+        `${item.id} ${item.source} ${item.label}`,
+      ),
     );
 
     const tripwireTriggered = claimsWrite && !hasReceiptEvidence;

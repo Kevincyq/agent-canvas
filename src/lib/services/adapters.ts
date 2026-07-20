@@ -1,49 +1,47 @@
-import { randomUUID } from "node:crypto";
-
+import type { AgentContext } from "@/lib/agent/context";
 import type { ToolReceipt } from "@/types/tool-receipt";
 
 /**
  * Service adapters hide Mock vs Real implementations from Agent tools.
- * M2 only defines the contract; M3 fills mock/real adapters.
+ * Model only sees tool schemas; adapters provide data behind stable ToolReceipts.
  */
 export type ServiceAdapters = {
-  searchPersonalKnowledge: (query: string) => Promise<ToolReceipt<{ hits: unknown[] }>>;
-  searchWeb: (query: string) => Promise<ToolReceipt<{ hits: unknown[] }>>;
-  getMeetingContext: (meetingId?: string) => Promise<ToolReceipt<{ meeting: unknown | null }>>;
-  getProjectContext: (projectId: string) => Promise<ToolReceipt<{ project: unknown | null }>>;
+  getCurrentContext: (
+    context: AgentContext,
+  ) => Promise<ToolReceipt<Record<string, unknown>>>;
+  searchPersonalKnowledge: (
+    query: string,
+    projectId?: string,
+  ) => Promise<ToolReceipt<{ hits: unknown[]; projectId?: string; query?: string }>>;
+  searchWeb: (
+    query: string,
+  ) => Promise<ToolReceipt<{ hits: unknown[]; query?: string; provider?: string }>>;
+  getMeetingContext: (
+    meetingId?: string,
+  ) => Promise<ToolReceipt<{ meeting: unknown | null }>>;
+  getProjectContext: (
+    projectId: string,
+  ) => Promise<
+    ToolReceipt<{
+      project: unknown | null;
+      sources?: unknown[];
+      actionCandidates?: unknown[];
+    }>
+  >;
   saveArtifactToProject: (input: {
+    conversationId: string;
     projectId: string;
     title: string;
     blocks: unknown[];
-  }) => Promise<ToolReceipt<{ artifactId: string }>>;
+    artifactType?: string;
+    evidence?: unknown;
+  }) => Promise<ToolReceipt<{ artifactId: string; projectId: string }>>;
   createTodo: (input: {
     title: string;
     dueAt?: string;
+    projectId?: string;
     idempotencyKey?: string;
-  }) => Promise<ToolReceipt<{ todoId: string; written: boolean; provider: string }>>;
+  }) => Promise<
+    ToolReceipt<{ todoId: string; written: boolean; provider: string; title?: string }>
+  >;
 };
-
-async function notImplemented(tool: string): Promise<ToolReceipt<never>> {
-  return {
-    ok: false,
-    tool,
-    executionId: randomUUID(),
-    error: {
-      code: "NOT_IMPLEMENTED",
-      message: `${tool} is not available until M3 Tool Registry.`,
-      retryable: false,
-    },
-    verifiedAt: new Date().toISOString(),
-  };
-}
-
-export function createStubServiceAdapters(): ServiceAdapters {
-  return {
-    searchPersonalKnowledge: async () => notImplemented("search_personal_knowledge"),
-    searchWeb: async () => notImplemented("search_web"),
-    getMeetingContext: async () => notImplemented("get_meeting_context"),
-    getProjectContext: async () => notImplemented("get_project_context"),
-    saveArtifactToProject: async () => notImplemented("save_artifact_to_project"),
-    createTodo: async () => notImplemented("create_todo"),
-  };
-}
