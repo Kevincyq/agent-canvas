@@ -473,6 +473,40 @@ a {
   flex-shrink: 0;
 }
 
+.composer-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.composer-dralk-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.composer-dralk-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.composer-dralk-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.composer-workflow-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .composer-input {
   position: relative;
 }

@@ -22,8 +22,10 @@ type ChatPanelProps = {
   draft: string;
   focusComposerSignal: number;
   voiceAttachment?: AgentAttachment | null;
+  workflowStatusLabel?: string | null;
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
+  onStartDralk?: () => Promise<void>;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
   onUpdateMessageBlocks: (messageId: string, blocks: ContentBlock[]) => void;
 };
@@ -36,8 +38,10 @@ export function ChatPanel({
   draft,
   focusComposerSignal,
   voiceAttachment = null,
+  workflowStatusLabel = null,
   onDraftChange,
   onSend,
+  onStartDralk,
   onCreateDocument,
   onUpdateMessageBlocks,
 }: ChatPanelProps) {
@@ -140,6 +144,23 @@ export function ChatPanel({
       </div>
 
       <form className="composer" onSubmit={handleSubmit}>
+        <div className="composer-toolbar">
+          <button
+            type="button"
+            className="composer-dralk-btn"
+            disabled={busy || !onStartDralk}
+            onClick={() => {
+              void onStartDralk?.();
+            }}
+          >
+            Dralk
+          </button>
+          {workflowStatusLabel ? (
+            <span className="composer-workflow-status" aria-live="polite">
+              {workflowStatusLabel}
+            </span>
+          ) : null}
+        </div>
         <div className="composer-input">
           <textarea
             ref={textareaRef}

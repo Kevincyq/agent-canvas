@@ -27,8 +27,10 @@ import type {
 import type { AgentRunResponse } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
 import type { ConversationTask } from "@/types/task";
+import type { DralkWorkflowRecord, WorkflowRequest } from "@/types/workflow";
 
 const CONVERSATION_STORAGE_KEY = "askai.conversationId";
+const WORKFLOW_STORAGE_KEY = "askai.dralkWorkflowId";
 
 const welcomeMessage: ChatMessage = {
   id: "welcome",
@@ -46,6 +48,7 @@ export function CanvasAgentApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage]);
   const [busy, setBusy] = useState(false);
   const [hydrating, setHydrating] = useState(true);
+  const [activeWorkflow, setActiveWorkflow] = useState<DralkWorkflowRecord | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasAfterMessageId, setCanvasAfterMessageId] = useState<string | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>("idle");
@@ -109,6 +112,7 @@ export function CanvasAgentApp() {
         const payload = (await response.json()) as {
           conversation: ConversationTask;
           messages: ChatMessage[];
+          activeWorkflow?: DralkWorkflowRecord | null;
         };
 
         if (cancelled) {
@@ -117,6 +121,32 @@ export function CanvasAgentApp() {
 
         setConversationId(payload.conversation.id);
         setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
+
+        if (payload.activeWorkflow) {
+          setActiveWorkflow(payload.activeWorkflow);
+          window.localStorage.setItem(WORKFLOW_STORAGE_KEY, payload.activeWorkflow.id);
+          const wf = payload.activeWorkflow;
+          setCanvasOpen(true);
+          setCanvasStatus(
+            wf.status === "recognized" || wf.status === "attached" ? "recognized" : "ready",
+          );
+          setWidgetStatus("ready");
+          setCanvasDisplayMode("inline");
+          setCanvasCollapsed(wf.status === "attached" || wf.status === "recognized");
+          setHwrMode(wf.payload.mode);
+          setHwrLanguage(wf.payload.language);
+          setHwrPrompt(wf.payload.prompt);
+          setRecognitionText(wf.payload.queryPayload?.displaySummary ?? "");
+          setHwrOpenResult({
+            ok: true,
+            mode: wf.payload.mode,
+            language: wf.payload.language,
+            prompt: wf.payload.prompt,
+            toolName: "fluxink-widget-host",
+          });
+          setWidgetSessionId((current) => current + 1);
+          canvasSessionStartedAtRef.current = performance.now();
+        }
       } catch {
         // Keep welcome state if restore fails; next send creates a new conversation.
       } finally {
@@ -138,6 +168,152 @@ export function CanvasAgentApp() {
     window.localStorage.setItem(CONVERSATION_STORAGE_KEY, nextId);
   }
 
+  async function postDralkEvent(
+    event: "canvas_opened" | "recognized" | "attached" | "cancelled" | "failed" | "completed",
+    extra?: {
+      queryPayload?: {
+        displaySummary?: string;
+        recognitionType?: string;
+        structuredContent?: unknown;
+        voiceTranscriptRef?: string;
+        startMs?: number;
+        endMs?: number;
+        canvasSessionId?: string;
+      };
+      errorMessage?: string;
+    },
+  ) {
+    if (!conversationId || !activeWorkflow) {
+      return null;
+    }
+
+    const response = await fetch("/api/workflows/dralk/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversationId,
+        workflowId: activeWorkflow.id,
+        event,
+        canvasSessionId: activeWorkflow.payload.canvasSessionId ?? undefined,
+        ...extra,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as { workflow: DralkWorkflowRecord };
+    setActiveWorkflow(payload.workflow);
+    return payload.workflow;
+  }
+
+  async function openCanvasFromWorkflowRequest(request: WorkflowRequest, afterMessageId?: string) {
+    const nextVoiceSessionId = crypto.randomUUID();
+
+    setActiveWorkflow({
+      id: request.workflowId,
+      conversationId: request.conversationId,
+      workflowType: "dralk_input",
+      status: request.status,
+      payload: {
+        origin: request.origin,
+        prompt: request.prompt,
+        mode: request.mode,
+        language: request.language,
+        forceNew: request.forceNew,
+        canvasSessionId: null,
+        queryPayload: null,
+        errorMessage: null,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    window.localStorage.setItem(WORKFLOW_STORAGE_KEY, request.workflowId);
+
+    setCanvasOpen(true);
+    setCanvasStatus("opening");
+    setWidgetStatus("loading");
+    setCanvasDisplayMode("inline");
+    setCanvasCollapsed(false);
+    setHwrMode(request.mode);
+    setHwrLanguage(request.language);
+    setHwrPrompt(request.prompt);
+    setRecognitionText("");
+    setRecognitionError(null);
+    setVoiceSessionId(nextVoiceSessionId);
+    setVoiceAttachment(null);
+    canvasSessionStartedAtRef.current = performance.now();
+    if (afterMessageId) {
+      setCanvasAfterMessageId(afterMessageId);
+    }
+
+    setHwrOpenResult({
+      ok: true,
+      mode: request.mode,
+      language: request.language,
+      prompt: request.prompt,
+      toolName: "fluxink-widget-host",
+    });
+    setCanvasStatus("ready");
+    setWidgetSessionId((current) => current + 1);
+
+    await fetch("/api/workflows/dralk/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversationId: request.conversationId,
+        workflowId: request.workflowId,
+        event: "canvas_opened",
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { workflow: DralkWorkflowRecord };
+        setActiveWorkflow(payload.workflow);
+      })
+      .catch(() => undefined);
+  }
+
+  async function handleStartDralk() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/workflows/dralk/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversationId ?? undefined,
+          origin: "user_button",
+          prompt: "请在画布中边画边说输入内容",
+          forceNew: true,
+        }),
+      });
+      const payload = (await response.json()) as {
+        conversationId: string;
+        workflowRequest: WorkflowRequest;
+        message?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.message || "启动 Dralk 失败");
+      }
+      persistConversationId(payload.conversationId);
+      await openCanvasFromWorkflowRequest(payload.workflowRequest);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "启动 Dralk 失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const canvasSummary = useMemo(
     () =>
       createCanvasSummary(
@@ -148,6 +324,20 @@ export function CanvasAgentApp() {
     [canvasOpen],
   );
 
+  const workflowStatusLabel = useMemo(() => {
+    if (!activeWorkflow) {
+      return null;
+    }
+    const labels: Record<string, string> = {
+      waiting_for_input: "Dralk：等待输入",
+      capturing: "Dralk：采集中",
+      recognized: "Dralk：已识别",
+      attached: "Dralk：已附到 Composer",
+      running: "Dralk：Ask AI 处理中",
+    };
+    return labels[activeWorkflow.status] ?? null;
+  }, [activeWorkflow]);
+
   const getCanvasElapsedMs = useCallback(() => {
     if (canvasSessionStartedAtRef.current <= 0) {
       return 0;
@@ -155,45 +345,6 @@ export function CanvasAgentApp() {
 
     return Math.max(0, Math.round(performance.now() - canvasSessionStartedAtRef.current));
   }, []);
-
-  async function openHandwritingCanvas(action: Extract<AgentAction, { type: "open_handwriting_canvas" }>) {
-    const nextVoiceSessionId = crypto.randomUUID();
-
-    setCanvasOpen(true);
-    setCanvasStatus("opening");
-    setWidgetStatus("loading");
-    setCanvasDisplayMode("inline");
-    setCanvasCollapsed(false);
-    setHwrMode(action.mode);
-    setHwrLanguage(action.language);
-    setHwrPrompt(action.prompt);
-    setRecognitionText("");
-    setRecognitionError(null);
-    setComposerDraft("");
-    setVoiceSessionId(nextVoiceSessionId);
-    setVoiceAttachment(null);
-    canvasSessionStartedAtRef.current = performance.now();
-
-    // Widget host loads FluxInk UI resource directly in-browser.
-    // Avoid blocking on show_handwriting_canvas, which can exceed MCP connect timeouts.
-    setHwrOpenResult({
-      ok: true,
-      mode: action.mode,
-      language: action.language,
-      prompt: action.prompt,
-      toolName: "fluxink-widget-host",
-    });
-    setCanvasStatus("ready");
-    setWidgetSessionId((current) => current + 1);
-  }
-
-  async function applyActions(actions: AgentAction[]) {
-    for (const action of actions) {
-      if (action.type === "open_handwriting_canvas") {
-        await openHandwritingCanvas(action);
-      }
-    }
-  }
 
   async function handleSend(message: string) {
     const cleanedMessage = stripVoiceAttachmentReference(message);
@@ -215,6 +366,20 @@ export function CanvasAgentApp() {
     voiceRecorderRef.current?.clearTranscript();
 
     try {
+      if (activeWorkflow && recognitionText.trim()) {
+        await postDralkEvent("attached", {
+          queryPayload: {
+            displaySummary: recognitionText.trim(),
+            recognitionType: "handwriting",
+            structuredContent: recognitionText.trim(),
+            voiceTranscriptRef: outboundAttachments[0]?.id ?? null,
+            startMs: 0,
+            endMs: getCanvasElapsedMs(),
+            canvasSessionId: activeWorkflow.payload.canvasSessionId ?? undefined,
+          },
+        });
+      }
+
       const response = await fetch("/api/agent/run", {
         method: "POST",
         headers: {
@@ -225,6 +390,20 @@ export function CanvasAgentApp() {
           message: cleanedMessage,
           canvas: canvasSummary,
           attachments: outboundAttachments,
+          dralkContext: recognitionText.trim()
+            ? {
+                displaySummary: recognitionText.trim(),
+                recognitionType: "handwriting",
+                structuredContent: recognitionText.trim(),
+                voiceTranscriptRef: outboundAttachments[0]?.id ?? null,
+                startMs: 0,
+                endMs: getCanvasElapsedMs(),
+                canvasSessionId: activeWorkflow?.payload.canvasSessionId ?? null,
+                confidence: null,
+                sourceMetadata: null,
+                strokesRef: null,
+              }
+            : undefined,
         }),
       });
 
@@ -248,7 +427,6 @@ export function CanvasAgentApp() {
         blocks: [...payload.blocks, ...legacySvgBlocks],
         charts: extractRenderChartSpecs(payload.actions),
       };
-      const opensCanvas = payload.actions.some((action) => action.type === "open_handwriting_canvas");
 
       setMessages((current) => {
         const withoutTempUser = current.filter((item) => item.id !== userMessage.id);
@@ -261,10 +439,38 @@ export function CanvasAgentApp() {
           assistantMessage,
         ];
       });
-      if (opensCanvas) {
+
+      if (payload.workflowRequest) {
         setCanvasAfterMessageId(assistantMessage.id);
+        await openCanvasFromWorkflowRequest(payload.workflowRequest, assistantMessage.id);
+      } else if (payload.actions.some((action) => action.type === "open_handwriting_canvas")) {
+        const action = payload.actions.find(
+          (item) => item.type === "open_handwriting_canvas",
+        ) as Extract<AgentAction, { type: "open_handwriting_canvas" }>;
+        const startResponse = await fetch("/api/workflows/dralk/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: payload.conversationId,
+            origin: "agent_intent",
+            prompt: action.prompt,
+            mode: action.mode,
+            language: action.language,
+            forceNew: action.force_new,
+          }),
+        });
+        if (startResponse.ok) {
+          const started = (await startResponse.json()) as {
+            workflowRequest: WorkflowRequest;
+          };
+          setCanvasAfterMessageId(assistantMessage.id);
+          await openCanvasFromWorkflowRequest(started.workflowRequest, assistantMessage.id);
+        }
+      } else {
+        setActiveWorkflow(null);
+        window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
       }
-      await applyActions(payload.actions);
+
       if (canvasOpen) {
         setCanvasCollapsed(true);
       }
@@ -315,6 +521,31 @@ export function CanvasAgentApp() {
 
       if (payload.status === "recognized") {
         setCanvasStatus("recognized");
+        if (conversationId && activeWorkflow) {
+          void fetch("/api/workflows/dralk/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId,
+              workflowId: activeWorkflow.id,
+              event: "recognized",
+              queryPayload: {
+                displaySummary: payload.text,
+                recognitionType: "handwriting",
+                structuredContent: payload.text,
+                canvasSessionId: activeWorkflow.payload.canvasSessionId,
+              },
+            }),
+          })
+            .then(async (response) => {
+              if (!response.ok) {
+                return;
+              }
+              const body = (await response.json()) as { workflow: DralkWorkflowRecord };
+              setActiveWorkflow(body.workflow);
+            })
+            .catch(() => undefined);
+        }
         return;
       }
 
@@ -327,7 +558,7 @@ export function CanvasAgentApp() {
         setCanvasStatus("ready");
       }
     },
-    [],
+    [activeWorkflow, conversationId],
   );
 
   const handleSendResultToComposer = useCallback((text: string) => {
@@ -444,10 +675,12 @@ export function CanvasAgentApp() {
         draft={composerDraft}
         focusComposerSignal={composerFocusSignal}
         voiceAttachment={voiceAttachment}
+        workflowStatusLabel={workflowStatusLabel}
         messages={messages}
         busy={busy || hydrating}
         onDraftChange={setComposerDraft}
         onSend={handleSend}
+        onStartDralk={handleStartDralk}
         onCreateDocument={handleCreateDocument}
         onUpdateMessageBlocks={handleUpdateMessageBlocks}
       />

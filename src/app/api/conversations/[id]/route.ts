@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { conversationTaskStore } from "@/lib/task/task-store";
+import { getActiveDralkWorkflow } from "@/lib/workflows/dralk";
 import { PatchConversationRequestSchema } from "@/types/task";
 
 export const runtime = "nodejs";
@@ -18,7 +19,12 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     const messages = conversationTaskStore.listMessages(id);
-    return NextResponse.json({ conversation, messages });
+    const activeWorkflow = getActiveDralkWorkflow(id);
+    return NextResponse.json({
+      conversation,
+      messages,
+      activeWorkflow,
+    });
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : "Failed to load conversation" },

@@ -3,6 +3,12 @@ import { z } from "zod";
 import { AgentActionSchema, AgentAttachmentSchema } from "@/types/agent";
 import { ContentBlocksSchema } from "@/types/content-block";
 import { ConversationStatusSchema } from "@/types/task";
+import {
+  DralkQueryPayloadSchema,
+  WorkflowRequestSchema,
+  type DralkQueryPayload,
+  type WorkflowRequest,
+} from "@/types/workflow";
 
 export const AgentRunEvidenceSchema = z.object({
   id: z.string(),
@@ -16,6 +22,8 @@ export const AgentRunArtifactRefSchema = z.object({
   artifactType: z.string(),
 });
 
+export const AgentRunDralkContextSchema = DralkQueryPayloadSchema.partial();
+
 export const AgentRunRequestSchema = z.object({
   conversationId: z.string().min(1).optional(),
   message: z.string().min(1),
@@ -28,10 +36,23 @@ export const AgentRunRequestSchema = z.object({
     })
     .optional(),
   attachments: z.array(AgentAttachmentSchema).default([]),
+  dralkContext: AgentRunDralkContextSchema.optional(),
   userId: z.string().min(1).max(100).optional(),
 });
 
-export type AgentRunRequest = z.infer<typeof AgentRunRequestSchema>;
+export type AgentRunRequest = {
+  conversationId?: string;
+  message: string;
+  canvas?: {
+    isOpen: boolean;
+    strokeCount: number;
+    textCount: number;
+    selectedElementId: string | null;
+  };
+  attachments: z.infer<typeof AgentAttachmentSchema>[];
+  dralkContext?: Partial<DralkQueryPayload>;
+  userId?: string;
+};
 
 export const AgentRunResponseSchema = z.object({
   conversationId: z.string().min(1),
@@ -46,6 +67,21 @@ export const AgentRunResponseSchema = z.object({
   evidence: z.array(AgentRunEvidenceSchema).optional(),
   artifacts: z.array(AgentRunArtifactRefSchema).optional(),
   requestId: z.string().optional(),
+  workflowRequest: WorkflowRequestSchema.optional(),
 });
 
-export type AgentRunResponse = z.infer<typeof AgentRunResponseSchema>;
+export type AgentRunResponse = {
+  conversationId: string;
+  sessionId: string;
+  status: z.infer<typeof ConversationStatusSchema>;
+  message: string;
+  blocks: z.infer<typeof ContentBlocksSchema>;
+  actions: z.infer<typeof AgentActionSchema>[];
+  userMessageId: string;
+  assistantMessageId: string;
+  outputStatus?: "ok" | "needs_input" | "needs_approval" | "failed";
+  evidence?: z.infer<typeof AgentRunEvidenceSchema>[];
+  artifacts?: z.infer<typeof AgentRunArtifactRefSchema>[];
+  requestId?: string;
+  workflowRequest?: WorkflowRequest;
+};

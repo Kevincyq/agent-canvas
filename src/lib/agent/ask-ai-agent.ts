@@ -24,11 +24,12 @@ export const ASK_AI_AGENT_INSTRUCTIONS = `
 1. 涉及项目事实、会议、知识库时，先调用至少一个 Read Tool，不要编造 Source。
 2. 需要持久保存总结/方案时，调用 save_artifact_to_project，并把 receipt 写入 evidence（id 可用 executionId，source=tool_receipt:<tool>）。
 3. 禁止在没有 Tool Receipt evidence 时声称“已写入待办/已创建待办/已保存到项目”。
-4. 普通闲聊可不调用工具；手写画布意图用 suggestedActions.open_handwriting_canvas。
+4. 普通闲聊可不调用工具；用户要边画边说/手写/打开画布时用 suggestedActions.open_handwriting_canvas（系统会归一到同一 ConversationTask 的 Dralk Workflow）。
 5. message 用简短中文引导；实质内容放 blocks（markdown/table/mermaid/latex/graph/media）。
-6. status 通常 ok；需要用户补充用 needs_input；失败用 failed。
+6. status 通常 ok；打开 Dralk 等待输入时可用 needs_input；失败用 failed。
 7. 多轮依赖 Session，不要假设客户端传 recentHistory。
 8. 不用的 nullable 字段填 null；evidence/artifacts/suggestedActions 无内容时返回 []。
+9. 函数图像：suggestedActions 用 render_chart + chartKind=function + chartExpression。
 `;
 
 export function createAskAiAgent(providerModel?: string) {
