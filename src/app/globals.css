@@ -2432,6 +2432,34 @@ a {
   width: 100%;
 }
 
+.document-editor-title-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.document-editor-close {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 22px;
+  height: 36px;
+  justify-content: center;
+  line-height: 1;
+  width: 36px;
+}
+
+.document-editor-close:hover {
+  background: rgba(20, 33, 43, 0.06);
+  color: var(--ink);
+}
+
 .document-editor-heading strong {
   font-size: 17px;
 }
@@ -2460,7 +2488,7 @@ a {
 .document-editor-actions {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .document-editor-actions button {

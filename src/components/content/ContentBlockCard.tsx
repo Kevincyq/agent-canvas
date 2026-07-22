@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ContentBlockPreview } from "@/components/content/ContentBlockPreview";
-import { buildAnswerPlainText } from "@/lib/content/answer-text";
 import type { ContentBlock } from "@/types/content-block";
 
 type ContentBlockCardProps = {
@@ -13,17 +12,7 @@ type ContentBlockCardProps = {
 
 export function ContentBlockCard({ blocks, onEdit }: ContentBlockCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const plainText = useMemo(() => buildAnswerPlainText(undefined, blocks), [blocks]);
-  const download = useMemo(
-    () => ({
-      href: `data:text/markdown;charset=utf-8,${encodeURIComponent(plainText)}`,
-      filename: "askai-answer.md",
-    }),
-    [plainText],
-  );
 
   useEffect(() => {
     if (!menuOpen) {
@@ -39,13 +28,6 @@ export function ContentBlockCard({ blocks, onEdit }: ContentBlockCardProps) {
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [menuOpen]);
-
-  async function copyAnswer() {
-    await navigator.clipboard.writeText(plainText);
-    setCopied(true);
-    setMenuOpen(false);
-    window.setTimeout(() => setCopied(false), 1600);
-  }
 
   if (blocks.length === 0) {
     return null;
@@ -79,12 +61,6 @@ export function ContentBlockCard({ blocks, onEdit }: ContentBlockCardProps) {
               >
                 编辑
               </button>
-              <button type="button" onClick={copyAnswer}>
-                {copied ? "已复制" : "复制"}
-              </button>
-              <a href={download.href} download={download.filename} onClick={() => setMenuOpen(false)}>
-                下载
-              </a>
             </div>
           ) : null}
         </div>

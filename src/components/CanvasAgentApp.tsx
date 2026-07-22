@@ -1033,10 +1033,6 @@ export function CanvasAgentApp() {
     }
   }
 
-  function handleUpdateMessageBlocks(messageId: string, blocks: ContentBlock[]) {
-    setMessages((current) => current.map((message) => message.id === messageId ? { ...message, blocks } : message));
-  }
-
   function handleCreateDocument(sourceMessageId: string, title: string, blocks: ContentBlock[]) {
     const documentId = crypto.randomUUID();
     const documentBlocks = structuredClone(blocks).map((block, index) => ({
@@ -1269,7 +1265,6 @@ export function CanvasAgentApp() {
         onWriteMeetingCalendar={handleWriteMeetingCalendar}
         dralkActive={Boolean(activeWorkflow)}
         onCreateDocument={handleCreateDocument}
-        onUpdateMessageBlocks={handleUpdateMessageBlocks}
         onApprovalDecide={handleApprovalDecide}
         onOpenArtifact={(artifactId) => {
           void handleOpenArtifact(artifactId);

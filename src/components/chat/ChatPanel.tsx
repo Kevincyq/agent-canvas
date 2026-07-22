@@ -42,7 +42,6 @@ type ChatPanelProps = {
   onWriteMeetingCalendar?: () => Promise<void>;
   dralkActive?: boolean;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
-  onUpdateMessageBlocks: (messageId: string, blocks: ContentBlock[]) => void;
   onApprovalDecide?: (input: {
     callId: string;
     decision: "approve" | "reject";
@@ -88,7 +87,6 @@ export function ChatPanel({
   onWriteMeetingCalendar,
   dralkActive = false,
   onCreateDocument,
-  onUpdateMessageBlocks,
   onApprovalDecide,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -358,10 +356,6 @@ export function ChatPanel({
         <UnifiedDocumentEditor
           blocks={messages.find((message) => message.id === editingMessageId)?.blocks || []}
           onClose={() => setEditingMessageId(null)}
-          onSave={(blocks) => {
-            onUpdateMessageBlocks(editingMessageId, blocks);
-            setEditingMessageId(null);
-          }}
           onSaveAsNew={(title, blocks) => {
             onCreateDocument(editingMessageId, title, blocks);
             setEditingMessageId(null);

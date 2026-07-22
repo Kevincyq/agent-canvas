@@ -13,11 +13,10 @@ import {
 type UnifiedDocumentEditorProps = {
   blocks: ContentBlock[];
   onClose: () => void;
-  onSave: (blocks: ContentBlock[]) => void;
   onSaveAsNew: (title: string, blocks: ContentBlock[]) => void;
 };
 
-export function UnifiedDocumentEditor({ blocks, onClose, onSave, onSaveAsNew }: UnifiedDocumentEditorProps) {
+export function UnifiedDocumentEditor({ blocks, onClose, onSaveAsNew }: UnifiedDocumentEditorProps) {
   const [draftBlocks, setDraftBlocks] = useState<ContentBlock[]>(() => structuredClone(blocks));
   const [selectedId, setSelectedId] = useState(blocks[0]?.id || "");
   const [documentTitle, setDocumentTitle] = useState(() => {
@@ -44,27 +43,39 @@ export function UnifiedDocumentEditor({ blocks, onClose, onSave, onSaveAsNew }: 
 
   return (
     <div className="document-editor-backdrop" role="presentation">
-      <section className="document-editor" role="dialog" aria-modal="true" aria-label="统一文档编辑器">
+      <section className="document-editor" role="dialog" aria-modal="true" aria-label="编辑 AI 答复">
         <header className="document-editor-header">
           <div className="document-editor-heading">
-            <strong>编辑 AI 答复</strong>
-            <label htmlFor="document-title">文档名称</label>
+            <div className="document-editor-title-row">
+              <strong>编辑 AI 答复</strong>
+              <button
+                type="button"
+                className="document-editor-close"
+                aria-label="关闭编辑"
+                title="关闭"
+                onClick={onClose}
+              >
+                ×
+              </button>
+            </div>
+            <label htmlFor="document-title">笔记名称</label>
             <input
               id="document-title"
               value={documentTitle}
               onChange={(event) => setDocumentTitle(event.target.value)}
-              placeholder="输入新文档名称"
+              placeholder="输入新笔记名称"
             />
           </div>
           <div className="document-editor-actions">
             <button type="button" onClick={onClose}>取消</button>
-            <button type="button" onClick={() => onSave(draftBlocks)}>保存到原答复</button>
             <button
               type="button"
               className="primary"
               disabled={!canSaveAsNew}
               onClick={() => onSaveAsNew(documentTitle.trim(), draftBlocks)}
-            >另存为新文档</button>
+            >
+              另存为新笔记
+            </button>
           </div>
         </header>
 
