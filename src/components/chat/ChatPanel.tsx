@@ -28,7 +28,6 @@ type ChatPanelProps = {
   draft: string;
   focusComposerSignal: number;
   voiceAttachment?: AgentAttachment | null;
-  workflowStatusLabel?: string | null;
   approvals?: ApprovalCard[];
   meetingWorkflow?: MeetingWorkflowRecord | null;
   navOpen?: boolean;
@@ -36,11 +35,9 @@ type ChatPanelProps = {
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
   onStartDralk?: () => Promise<void>;
-  onCancelDralk?: () => Promise<void>;
   onStartMeeting?: () => Promise<void>;
   onFinishMeeting?: () => Promise<void>;
   onWriteMeetingCalendar?: () => Promise<void>;
-  dralkActive?: boolean;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
   onApprovalDecide?: (input: {
     callId: string;
@@ -73,7 +70,6 @@ export function ChatPanel({
   draft,
   focusComposerSignal,
   voiceAttachment = null,
-  workflowStatusLabel = null,
   approvals = [],
   meetingWorkflow = null,
   navOpen = false,
@@ -81,11 +77,9 @@ export function ChatPanel({
   onDraftChange,
   onSend,
   onStartDralk,
-  onCancelDralk,
   onStartMeeting,
   onFinishMeeting,
   onWriteMeetingCalendar,
-  dralkActive = false,
   onCreateDocument,
   onApprovalDecide,
 }: ChatPanelProps) {
@@ -280,29 +274,17 @@ export function ChatPanel({
 
       <form className="composer" onSubmit={handleSubmit}>
         <div className="composer-toolbar">
-          {dralkActive ? (
-            <button
-              type="button"
-              className="composer-tool-btn composer-dralk-cancel"
-              disabled={busy}
-              onClick={() => {
-                void onCancelDralk?.();
-              }}
-            >
-              结束 Dralk
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="composer-tool-btn composer-dralk-btn"
-              disabled={busy || !onStartDralk}
-              onClick={() => {
-                void onStartDralk?.();
-              }}
-            >
-              Dralk
-            </button>
-          )}
+          <button
+            type="button"
+            className="composer-tool-btn composer-dralk-btn"
+            disabled={busy || !onStartDralk}
+            title="打开 Dralk 手写画布"
+            onClick={() => {
+              void onStartDralk?.();
+            }}
+          >
+            Dralk
+          </button>
           <button
             type="button"
             className="composer-tool-btn composer-meeting-btn is-display-only"
@@ -312,11 +294,6 @@ export function ChatPanel({
           >
             会议
           </button>
-          {workflowStatusLabel ? (
-            <span className="composer-workflow-status" aria-live="polite">
-              {workflowStatusLabel}
-            </span>
-          ) : null}
         </div>
         <div className="composer-input">
           <textarea

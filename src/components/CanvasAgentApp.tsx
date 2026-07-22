@@ -583,40 +583,14 @@ export function CanvasAgentApp() {
     window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
   }
 
-  async function handleCancelDralk() {
-    if (!conversationId || !activeWorkflow) {
-      await clearDralkSessionLocal();
+  async function handleStartDralk() {
+    // Button only opens/focuses the canvas — it does not toggle into an "end" state.
+    if (canvasOpen && activeWorkflow) {
+      setCanvasCollapsed(false);
+      setCanvasDisplayMode("inline");
       return;
     }
 
-    setBusy(true);
-    try {
-      await postDralkEvent("cancelled");
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "已结束 Dralk 手写输入，可继续普通对话。",
-        },
-      ]);
-      await clearDralkSessionLocal();
-      await refreshRecentConversations();
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: error instanceof Error ? error.message : "结束 Dralk 失败",
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleStartDralk() {
     setBusy(true);
     try {
       const response = await fetch("/api/workflows/dralk/start", {
@@ -775,20 +749,6 @@ export function CanvasAgentApp() {
       ),
     [canvasOpen],
   );
-
-  const workflowStatusLabel = useMemo(() => {
-    if (!activeWorkflow) {
-      return null;
-    }
-    const labels: Record<string, string> = {
-      waiting_for_input: "Dralk：等待手写",
-      capturing: "Dralk：采集中",
-      recognized: "Dralk：已识别",
-      attached: "Dralk：已附到输入框",
-      running: "Dralk：AskAI 处理中",
-    };
-    return labels[activeWorkflow.status] ?? null;
-  }, [activeWorkflow]);
 
   const getCanvasElapsedMs = useCallback(() => {
     if (canvasSessionStartedAtRef.current <= 0) {
@@ -1249,7 +1209,6 @@ export function CanvasAgentApp() {
         draft={composerDraft}
         focusComposerSignal={composerFocusSignal}
         voiceAttachment={voiceAttachment}
-        workflowStatusLabel={workflowStatusLabel}
         approvals={pendingApprovals}
         meetingWorkflow={meetingWorkflow}
         messages={messages}
@@ -1259,11 +1218,9 @@ export function CanvasAgentApp() {
         onDraftChange={setComposerDraft}
         onSend={handleSend}
         onStartDralk={handleStartDralk}
-        onCancelDralk={handleCancelDralk}
         onStartMeeting={handleStartMeeting}
         onFinishMeeting={handleFinishMeeting}
         onWriteMeetingCalendar={handleWriteMeetingCalendar}
-        dralkActive={Boolean(activeWorkflow)}
         onCreateDocument={handleCreateDocument}
         onApprovalDecide={handleApprovalDecide}
         onOpenArtifact={(artifactId) => {
