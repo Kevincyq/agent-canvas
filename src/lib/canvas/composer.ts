@@ -92,3 +92,52 @@ export function prepareRecognitionForComposer(
 ): string {
   return sanitizeRecognitionForComposer(text, canvasPrompt);
 }
+
+const MAX_DRALK_SUMMARY_CHARS = 4_000;
+
+/**
+ * Build a compact Dralk payload for workflow events / agent attach.
+ * Prefer sanitized display text; never ship raw stroke dumps as structuredContent.
+ */
+export function buildCompactDralkQueryPayload(input: {
+  recognitionText: string;
+  canvasPrompt?: string;
+  recognitionType?: string;
+  voiceTranscriptRef?: string | null;
+  startMs?: number;
+  endMs?: number;
+  canvasSessionId?: string | null;
+}): {
+  displaySummary: string;
+  recognitionType: string;
+  structuredContent: string;
+  voiceTranscriptRef: string | null;
+  startMs: number;
+  endMs: number;
+  canvasSessionId: string | null;
+  confidence: null;
+  sourceMetadata: null;
+  strokesRef: null;
+} {
+  const prepared = prepareRecognitionForComposer(
+    input.recognitionText,
+    input.canvasPrompt ?? "",
+  );
+  const summary =
+    prepared.length > MAX_DRALK_SUMMARY_CHARS
+      ? `${prepared.slice(0, MAX_DRALK_SUMMARY_CHARS)}…`
+      : prepared;
+
+  return {
+    displaySummary: summary,
+    recognitionType: input.recognitionType ?? "handwriting",
+    structuredContent: summary,
+    voiceTranscriptRef: input.voiceTranscriptRef ?? null,
+    startMs: input.startMs ?? 0,
+    endMs: input.endMs ?? 0,
+    canvasSessionId: input.canvasSessionId ?? null,
+    confidence: null,
+    sourceMetadata: null,
+    strokesRef: null,
+  };
+}

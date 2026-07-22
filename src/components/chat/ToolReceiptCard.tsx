@@ -35,8 +35,8 @@ export function ToolReceiptCard({
         <div className="receipt-section">
           <span className="receipt-label">Tool Receipt</span>
           <ul>
-            {receipts.map((item) => (
-              <li key={item.id}>
+            {receipts.map((item, index) => (
+              <li key={`${item.id}:${item.source}:${index}`}>
                 <strong>{item.label}</strong>
                 <span>{item.source.replace("tool_receipt:", "")}</span>
               </li>

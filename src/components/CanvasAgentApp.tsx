@@ -7,7 +7,10 @@ import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
 import { ProjectNav, type ProjectNavItem } from "@/components/nav/ProjectNav";
 import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/voice/VoiceRecorder";
 import { createCanvasSummary } from "@/lib/canvas/actions";
-import { prepareRecognitionForComposer } from "@/lib/canvas/composer";
+import {
+  buildCompactDralkQueryPayload,
+  prepareRecognitionForComposer,
+} from "@/lib/canvas/composer";
 import { markAndroidTabletDocument } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { extractLegacySvgFences, extractRenderSvgSpecs } from "@/lib/svg/extract";
@@ -27,6 +30,7 @@ import type {
 } from "@/types/agent";
 import type { AgentRunResponse, ApprovalCard } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
+import type { MeetingWorkflowRecord } from "@/types/meeting-workflow";
 import type { ConversationTask } from "@/types/task";
 import type { DralkWorkflowRecord, WorkflowRequest } from "@/types/workflow";
 
@@ -37,7 +41,7 @@ const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "你好，我是 Dralk Agent，你可以边画边说输入内容，发给 AskAI，整理内容、解题或追问。",
+    "你好，我是 AskAI Agent。可以直接提问，或用 Dralk 输入。",
 };
 
 type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";
@@ -51,6 +55,7 @@ export function CanvasAgentApp() {
   const [hydrating, setHydrating] = useState(true);
   const [activeWorkflow, setActiveWorkflow] = useState<DralkWorkflowRecord | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalCard[]>([]);
+  const [meetingWorkflow, setMeetingWorkflow] = useState<MeetingWorkflowRecord | null>(null);
   const [projects, setProjects] = useState<ProjectNavItem[]>([]);
   const [recentConversations, setRecentConversations] = useState<ConversationTask[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -77,6 +82,7 @@ export function CanvasAgentApp() {
   const [widgetSessionId, setWidgetSessionId] = useState(0);
   const [voiceSessionId, setVoiceSessionId] = useState(() => crypto.randomUUID());
   const [voiceAttachment, setVoiceAttachment] = useState<AgentAttachment | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
   const hwrPromptRef = useRef("");
   const voiceAttachmentRef = useRef<AgentAttachment | null>(null);
   const voiceRecorderRef = useRef<VoiceRecorderHandle | null>(null);
@@ -108,7 +114,7 @@ export function CanvasAgentApp() {
       try {
         const [projectsResponse, conversationsResponse] = await Promise.all([
           fetch("/api/projects"),
-          fetch("/api/conversations?limit=20"),
+          fetch("/api/conversations?limit=50"),
         ]);
         if (cancelled) {
           return;
@@ -125,7 +131,6 @@ export function CanvasAgentApp() {
             (payload.projects ?? []).map((project) => ({
               id: project.id,
               name: project.name,
-              sourceCount: project.sources?.length ?? 0,
             })),
           );
         }
@@ -160,6 +165,7 @@ export function CanvasAgentApp() {
           conversation: ConversationTask;
           messages: ChatMessage[];
           activeWorkflow?: DralkWorkflowRecord | null;
+          meetingWorkflow?: MeetingWorkflowRecord | null;
           approvals?: ApprovalCard[];
         };
 
@@ -168,9 +174,10 @@ export function CanvasAgentApp() {
         }
 
         setConversationId(payload.conversation.id);
-        setActiveProjectId(payload.conversation.projectId);
+        setActiveProjectId(payload.conversation.projectId ?? null);
         setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
         setPendingApprovals(payload.approvals ?? []);
+        setMeetingWorkflow(payload.meetingWorkflow ?? null);
 
         if (payload.activeWorkflow) {
           setActiveWorkflow(payload.activeWorkflow);
@@ -221,7 +228,7 @@ export function CanvasAgentApp() {
 
   async function refreshRecentConversations() {
     try {
-      const response = await fetch("/api/conversations?limit=20");
+      const response = await fetch("/api/conversations?limit=50");
       if (!response.ok) {
         return;
       }
@@ -237,18 +244,20 @@ export function CanvasAgentApp() {
     try {
       const response = await fetch(`/api/conversations/${nextId}`);
       if (!response.ok) {
-        throw new Error("加载对话失败");
+        throw new Error("加载任务失败");
       }
       const payload = (await response.json()) as {
         conversation: ConversationTask;
         messages: ChatMessage[];
         activeWorkflow?: DralkWorkflowRecord | null;
+        meetingWorkflow?: MeetingWorkflowRecord | null;
         approvals?: ApprovalCard[];
       };
       persistConversationId(payload.conversation.id);
-      setActiveProjectId(payload.conversation.projectId);
+      setActiveProjectId(payload.conversation.projectId ?? null);
       setMessages(payload.messages.length > 0 ? payload.messages : [welcomeMessage]);
       setPendingApprovals(payload.approvals ?? []);
+      setMeetingWorkflow(payload.meetingWorkflow ?? null);
       setSelectedArtifact(null);
       setActiveWorkflow(payload.activeWorkflow ?? null);
       setCanvasOpen(Boolean(payload.activeWorkflow));
@@ -261,7 +270,7 @@ export function CanvasAgentApp() {
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: error instanceof Error ? error.message : "加载对话失败",
+          content: error instanceof Error ? error.message : "加载任务失败",
         },
       ]);
     } finally {
@@ -269,28 +278,39 @@ export function CanvasAgentApp() {
     }
   }
 
-  async function handleNewChat() {
+  /**
+   * Create a task.
+   * - `null` / omit with explicit null from top「新任务」→ unassigned (bottom「任务」)
+   * - collection id from folder「+」→ nested under that Collection
+   * - undefined (legacy) falls back to activeProjectId — prefer callers pass null or id explicitly
+   */
+  async function handleNewChat(projectIdOverride?: string | null) {
+    const projectId =
+      projectIdOverride !== undefined ? projectIdOverride : activeProjectId;
     setBusy(true);
     try {
       const response = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: "New chat",
-          projectId: activeProjectId,
+          title: "New task",
+          projectId: projectId ?? null,
           originSurface: "askai",
         }),
       });
       const payload = (await response.json()) as { conversation?: ConversationTask; message?: string };
       if (!response.ok || !payload.conversation) {
-        throw new Error(payload.message || "创建对话失败");
+        throw new Error(payload.message || "创建任务失败");
       }
       persistConversationId(payload.conversation.id);
-      setActiveProjectId(payload.conversation.projectId);
+      // Top「新任务」clears collection context; folder「+」keeps / sets that collection.
+      setActiveProjectId(payload.conversation.projectId ?? null);
       setMessages([welcomeMessage]);
       setPendingApprovals([]);
       setActiveWorkflow(null);
+      setMeetingWorkflow(null);
       setCanvasOpen(false);
+      setCanvasAfterMessageId(null);
       setSelectedArtifact(null);
       window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
       await refreshRecentConversations();
@@ -300,7 +320,7 @@ export function CanvasAgentApp() {
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: error instanceof Error ? error.message : "创建对话失败",
+          content: error instanceof Error ? error.message : "创建任务失败",
         },
       ]);
     } finally {
@@ -308,51 +328,101 @@ export function CanvasAgentApp() {
     }
   }
 
-  async function handleSelectProject(projectId: string) {
-    setActiveProjectId(projectId);
+  async function refreshProjects() {
+    try {
+      const response = await fetch("/api/projects");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as {
+        projects: Array<{
+          id: string;
+          name: string;
+          sources?: Array<unknown>;
+        }>;
+      };
+      setProjects(
+        (payload.projects ?? []).map((project) => ({
+          id: project.id,
+          name: project.name,
+        })),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleNewProject() {
+    const name = window.prompt("新建 Collection 名称", "My Collection");
+    if (!name?.trim()) {
+      return;
+    }
     setBusy(true);
     try {
-      const response = await fetch("/api/conversations", {
+      const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "New chat",
-          projectId,
-          originSurface: "askai",
-        }),
+        body: JSON.stringify({ name: name.trim() }),
       });
-      const payload = (await response.json()) as { conversation?: ConversationTask; message?: string };
-      if (!response.ok || !payload.conversation) {
-        throw new Error(payload.message || "创建项目对话失败");
+      const payload = (await response.json()) as {
+        project?: { id: string; name: string };
+        message?: string;
+      };
+      if (!response.ok || !payload.project) {
+        throw new Error(payload.message || "创建 Collection 失败");
       }
-      persistConversationId(payload.conversation.id);
-      setMessages([
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `已进入项目上下文。当前 Project：${
-            projects.find((item) => item.id === projectId)?.name ?? projectId
-          }。你可以继续提问、检索 Sources 或保存 Artifact。`,
-        },
-      ]);
-      setPendingApprovals([]);
-      setActiveWorkflow(null);
-      setCanvasOpen(false);
-      setSelectedArtifact(null);
-      window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
-      await refreshRecentConversations();
+      await refreshProjects();
+      handleSelectProject(payload.project.id, payload.project.name);
     } catch (error) {
       setMessages((current) => [
         ...current,
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: error instanceof Error ? error.message : "切换项目失败",
+          content: error instanceof Error ? error.message : "创建 Collection 失败",
         },
       ]);
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleClearProject() {
+    setActiveProjectId(null);
+  }
+
+  function handleSelectProject(projectId: string, projectNameHint?: string) {
+    const projectName =
+      projectNameHint ?? projects.find((item) => item.id === projectId)?.name ?? projectId;
+    const current = recentConversations.find((item) => item.id === conversationId);
+
+    // Select Collection as context only — never auto-create a task.
+    // Clicking the same Collection again keeps it selected (use「不选 Collection」to leave).
+    if (current?.projectId === projectId) {
+      setActiveProjectId(projectId);
+      return;
+    }
+    if (activeProjectId === projectId && !conversationId) {
+      return;
+    }
+
+    setActiveProjectId(projectId);
+    setConversationId(null);
+    window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    setMessages([
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `已切换到 Collection「${projectName}」。可直接在下方提问，或点该 Collection 旁的 + 新建任务；顶部「新任务」会创建无归属任务。`,
+      },
+    ]);
+    setPendingApprovals([]);
+    setActiveWorkflow(null);
+    setMeetingWorkflow(null);
+    setCanvasOpen(false);
+    setCanvasAfterMessageId(null);
+    setSelectedArtifact(null);
+    window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
   }
 
   async function handleOpenArtifact(artifactId: string) {
@@ -423,27 +493,37 @@ export function CanvasAgentApp() {
     return payload.workflow;
   }
 
-  async function openCanvasFromWorkflowRequest(request: WorkflowRequest, afterMessageId?: string) {
+  async function openCanvasFromWorkflowRequest(
+    request: WorkflowRequest,
+    options?: {
+      afterMessageId?: string;
+      workflow?: DralkWorkflowRecord | null;
+    },
+  ) {
+    const afterMessageId = options?.afterMessageId;
+    const workflow = options?.workflow;
     const nextVoiceSessionId = crypto.randomUUID();
 
-    setActiveWorkflow({
-      id: request.workflowId,
-      conversationId: request.conversationId,
-      workflowType: "dralk_input",
-      status: request.status,
-      payload: {
-        origin: request.origin,
-        prompt: request.prompt,
-        mode: request.mode,
-        language: request.language,
-        forceNew: request.forceNew,
-        canvasSessionId: null,
-        queryPayload: null,
-        errorMessage: null,
+    setActiveWorkflow(
+      workflow ?? {
+        id: request.workflowId,
+        conversationId: request.conversationId,
+        workflowType: "dralk_input",
+        status: request.status,
+        payload: {
+          origin: request.origin,
+          prompt: request.prompt,
+          mode: request.mode,
+          language: request.language,
+          forceNew: request.forceNew,
+          canvasSessionId: null,
+          queryPayload: null,
+          errorMessage: null,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    );
     window.localStorage.setItem(WORKFLOW_STORAGE_KEY, request.workflowId);
 
     setCanvasOpen(true);
@@ -480,6 +560,7 @@ export function CanvasAgentApp() {
         conversationId: request.conversationId,
         workflowId: request.workflowId,
         event: "canvas_opened",
+        canvasSessionId: workflow?.payload.canvasSessionId ?? undefined,
       }),
     })
       .then(async (response) => {
@@ -490,6 +571,49 @@ export function CanvasAgentApp() {
         setActiveWorkflow(payload.workflow);
       })
       .catch(() => undefined);
+  }
+
+  async function clearDralkSessionLocal() {
+    setActiveWorkflow(null);
+    setCanvasOpen(false);
+    setCanvasCollapsed(false);
+    setCanvasAfterMessageId(null);
+    setRecognitionText("");
+    setRecognitionError(null);
+    window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+  }
+
+  async function handleCancelDralk() {
+    if (!conversationId || !activeWorkflow) {
+      await clearDralkSessionLocal();
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await postDralkEvent("cancelled");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "已结束 Dralk 手写输入，可继续普通对话。",
+        },
+      ]);
+      await clearDralkSessionLocal();
+      await refreshRecentConversations();
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "结束 Dralk 失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleStartDralk() {
@@ -507,14 +631,39 @@ export function CanvasAgentApp() {
       });
       const payload = (await response.json()) as {
         conversationId: string;
+        workflow?: DralkWorkflowRecord;
         workflowRequest: WorkflowRequest;
+        userMessageId?: string;
+        assistantMessageId?: string;
         message?: string;
       };
       if (!response.ok) {
         throw new Error(payload.message || "启动 Dralk 失败");
       }
       persistConversationId(payload.conversationId);
-      await openCanvasFromWorkflowRequest(payload.workflowRequest);
+
+      // Reload messages so button entry is part of the chat timeline.
+      const conversationResponse = await fetch(`/api/conversations/${payload.conversationId}`);
+      if (conversationResponse.ok) {
+        const conversationPayload = (await conversationResponse.json()) as {
+          messages: ChatMessage[];
+        };
+        setMessages(
+          conversationPayload.messages.length > 0
+            ? conversationPayload.messages
+            : [welcomeMessage],
+        );
+      }
+
+      const anchorId = payload.assistantMessageId || undefined;
+      if (anchorId) {
+        setCanvasAfterMessageId(anchorId);
+      }
+      await openCanvasFromWorkflowRequest(payload.workflowRequest, {
+        afterMessageId: anchorId,
+        workflow: payload.workflow,
+      });
+      await refreshRecentConversations();
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -527,6 +676,94 @@ export function CanvasAgentApp() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleStartMeeting() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/workflows/meeting/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversationId ?? undefined,
+          origin: "user_button",
+        }),
+      });
+      const payload = (await response.json()) as {
+        conversationId?: string;
+        workflow?: MeetingWorkflowRecord;
+        message?: string;
+      };
+      if (!response.ok || !payload.conversationId || !payload.workflow) {
+        throw new Error(payload.message || "启动会议失败");
+      }
+      persistConversationId(payload.conversationId);
+      setMeetingWorkflow(payload.workflow);
+      await loadConversationById(payload.conversationId);
+      await refreshRecentConversations();
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "启动会议失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleFinishMeeting() {
+    if (!meetingWorkflow) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/workflows/meeting/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: meetingWorkflow.conversationId,
+          workflowId: meetingWorkflow.id,
+        }),
+      });
+      const payload = (await response.json()) as {
+        workflow?: MeetingWorkflowRecord;
+        message?: string;
+      };
+      if (!response.ok || !payload.workflow) {
+        throw new Error(payload.message || "结束会议失败");
+      }
+      setMeetingWorkflow(payload.workflow);
+      await loadConversationById(meetingWorkflow.conversationId);
+      await refreshRecentConversations();
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: error instanceof Error ? error.message : "结束会议失败",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleWriteMeetingCalendar() {
+    const action = meetingWorkflow?.payload.actionItems[0];
+    const sourceId = meetingWorkflow?.payload.storedSourceIds.find((id) =>
+      id.endsWith("_minutes"),
+    );
+    if (!action) {
+      return;
+    }
+    await handleSend(
+      `请从会议纪要来源 ${sourceId ?? "刚才的会议纪要"} 核实行动项，并把「${action.title}」写入 Tablet 日历。时间使用 ${action.dueAt}，安排 30 分钟；idempotencyKey 使用 ${action.id}。请调用 create_calendar_event 并展示写入结果。`,
+    );
   }
 
   const canvasSummary = useMemo(
@@ -544,11 +781,11 @@ export function CanvasAgentApp() {
       return null;
     }
     const labels: Record<string, string> = {
-      waiting_for_input: "Dralk：等待输入",
+      waiting_for_input: "Dralk：等待手写",
       capturing: "Dralk：采集中",
       recognized: "Dralk：已识别",
-      attached: "Dralk：已附到 Composer",
-      running: "Dralk：Ask AI 处理中",
+      attached: "Dralk：已附到输入框",
+      running: "Dralk：AskAI 处理中",
     };
     return labels[activeWorkflow.status] ?? null;
   }, [activeWorkflow]);
@@ -581,16 +818,27 @@ export function CanvasAgentApp() {
     voiceRecorderRef.current?.clearTranscript();
 
     try {
-      if (activeWorkflow && recognitionText.trim()) {
-        await postDralkEvent("attached", {
-          queryPayload: {
-            displaySummary: recognitionText.trim(),
-            recognitionType: "handwriting",
-            structuredContent: recognitionText.trim(),
+      const compactDralk = recognitionText.trim()
+        ? buildCompactDralkQueryPayload({
+            recognitionText,
+            canvasPrompt: hwrPromptRef.current,
             voiceTranscriptRef: outboundAttachments[0]?.id ?? null,
             startMs: 0,
             endMs: getCanvasElapsedMs(),
-            canvasSessionId: activeWorkflow.payload.canvasSessionId ?? undefined,
+            canvasSessionId: activeWorkflow?.payload.canvasSessionId ?? null,
+          })
+        : null;
+
+      if (activeWorkflow && compactDralk?.displaySummary) {
+        await postDralkEvent("attached", {
+          queryPayload: {
+            displaySummary: compactDralk.displaySummary,
+            recognitionType: compactDralk.recognitionType,
+            structuredContent: compactDralk.structuredContent,
+            voiceTranscriptRef: compactDralk.voiceTranscriptRef ?? undefined,
+            startMs: compactDralk.startMs,
+            endMs: compactDralk.endMs,
+            canvasSessionId: compactDralk.canvasSessionId ?? undefined,
           },
         });
       }
@@ -606,20 +854,7 @@ export function CanvasAgentApp() {
           message: cleanedMessage,
           canvas: canvasSummary,
           attachments: outboundAttachments,
-          dralkContext: recognitionText.trim()
-            ? {
-                displaySummary: recognitionText.trim(),
-                recognitionType: "handwriting",
-                structuredContent: recognitionText.trim(),
-                voiceTranscriptRef: outboundAttachments[0]?.id ?? null,
-                startMs: 0,
-                endMs: getCanvasElapsedMs(),
-                canvasSessionId: activeWorkflow?.payload.canvasSessionId ?? null,
-                confidence: null,
-                sourceMetadata: null,
-                strokesRef: null,
-              }
-            : undefined,
+          dralkContext: compactDralk?.displaySummary ? compactDralk : undefined,
         }),
       });
 
@@ -662,7 +897,9 @@ export function CanvasAgentApp() {
 
       if (payload.workflowRequest) {
         setCanvasAfterMessageId(assistantMessage.id);
-        await openCanvasFromWorkflowRequest(payload.workflowRequest, assistantMessage.id);
+        await openCanvasFromWorkflowRequest(payload.workflowRequest, {
+          afterMessageId: assistantMessage.id,
+        });
       } else if (payload.actions.some((action) => action.type === "open_handwriting_canvas")) {
         const action = payload.actions.find(
           (item) => item.type === "open_handwriting_canvas",
@@ -681,17 +918,41 @@ export function CanvasAgentApp() {
         });
         if (startResponse.ok) {
           const started = (await startResponse.json()) as {
+            workflow?: DralkWorkflowRecord;
             workflowRequest: WorkflowRequest;
           };
           setCanvasAfterMessageId(assistantMessage.id);
-          await openCanvasFromWorkflowRequest(started.workflowRequest, assistantMessage.id);
+          await openCanvasFromWorkflowRequest(started.workflowRequest, {
+            afterMessageId: assistantMessage.id,
+            workflow: started.workflow,
+          });
         }
-      } else {
-        setActiveWorkflow(null);
-        window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+      } else if (payload.actions.some((action) => action.type === "open_meeting_workflow")) {
+        const action = payload.actions.find(
+          (item) => item.type === "open_meeting_workflow",
+        ) as Extract<AgentAction, { type: "open_meeting_workflow" }>;
+        const startResponse = await fetch("/api/workflows/meeting/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: payload.conversationId,
+            origin: "agent_intent",
+            meetingId: action.meetingId ?? undefined,
+          }),
+        });
+        if (startResponse.ok) {
+          const started = (await startResponse.json()) as {
+            workflow?: MeetingWorkflowRecord;
+          };
+          setMeetingWorkflow(started.workflow ?? null);
+        }
+      } else if (recognitionText.trim() || outboundAttachments.length > 0) {
+        // This turn consumed Dralk input — close local session.
+        await clearDralkSessionLocal();
       }
+      // If Dralk canvas is still open without being consumed, keep activeWorkflow.
 
-      if (canvasOpen) {
+      if (canvasOpen && (recognitionText.trim() || outboundAttachments.length > 0)) {
         setCanvasCollapsed(true);
       }
     } catch (error) {
@@ -754,7 +1015,9 @@ export function CanvasAgentApp() {
       await refreshRecentConversations();
 
       if (payload.workflowRequest) {
-        await openCanvasFromWorkflowRequest(payload.workflowRequest, assistantMessage.id);
+        await openCanvasFromWorkflowRequest(payload.workflowRequest, {
+          afterMessageId: assistantMessage.id,
+        });
       }
     } catch (error) {
       setMessages((current) => [
@@ -804,6 +1067,11 @@ export function CanvasAgentApp() {
       if (payload.status === "recognized") {
         setCanvasStatus("recognized");
         if (conversationId && activeWorkflow) {
+          const compact = buildCompactDralkQueryPayload({
+            recognitionText: payload.text,
+            canvasPrompt: hwrPromptRef.current,
+            canvasSessionId: activeWorkflow.payload.canvasSessionId,
+          });
           void fetch("/api/workflows/dralk/event", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -812,10 +1080,10 @@ export function CanvasAgentApp() {
               workflowId: activeWorkflow.id,
               event: "recognized",
               queryPayload: {
-                displaySummary: payload.text,
-                recognitionType: "handwriting",
-                structuredContent: payload.text,
-                canvasSessionId: activeWorkflow.payload.canvasSessionId,
+                displaySummary: compact.displaySummary,
+                recognitionType: compact.recognitionType,
+                structuredContent: compact.structuredContent,
+                canvasSessionId: compact.canvasSessionId,
               },
             }),
           })
@@ -950,15 +1218,25 @@ export function CanvasAgentApp() {
   ) : null;
 
   return (
-    <main className="app-shell">
+    <main className={navOpen ? "app-shell nav-open" : "app-shell"}>
+      <button
+        type="button"
+        className="nav-backdrop"
+        aria-label="关闭导航栏"
+        tabIndex={navOpen ? 0 : -1}
+        onClick={() => setNavOpen(false)}
+      />
       <ProjectNav
         projects={projects}
         recent={recentConversations}
         activeConversationId={conversationId}
         activeProjectId={activeProjectId}
         busy={busy || hydrating}
-        onNewChat={() => {
-          void handleNewChat();
+        onNewChat={(projectId) => {
+          void handleNewChat(projectId);
+        }}
+        onNewProject={() => {
+          void handleNewProject();
         }}
         onSelectConversation={(id) => {
           void loadConversationById(id);
@@ -966,6 +1244,8 @@ export function CanvasAgentApp() {
         onSelectProject={(id) => {
           void handleSelectProject(id);
         }}
+        onClearProject={handleClearProject}
+        onRequestClose={() => setNavOpen(false)}
       />
       <ChatPanel
         canvasSlot={canvasSlot}
@@ -975,11 +1255,19 @@ export function CanvasAgentApp() {
         voiceAttachment={voiceAttachment}
         workflowStatusLabel={workflowStatusLabel}
         approvals={pendingApprovals}
+        meetingWorkflow={meetingWorkflow}
         messages={messages}
         busy={busy || hydrating}
+        navOpen={navOpen}
+        onToggleNav={() => setNavOpen((open) => !open)}
         onDraftChange={setComposerDraft}
         onSend={handleSend}
         onStartDralk={handleStartDralk}
+        onCancelDralk={handleCancelDralk}
+        onStartMeeting={handleStartMeeting}
+        onFinishMeeting={handleFinishMeeting}
+        onWriteMeetingCalendar={handleWriteMeetingCalendar}
+        dralkActive={Boolean(activeWorkflow)}
         onCreateDocument={handleCreateDocument}
         onUpdateMessageBlocks={handleUpdateMessageBlocks}
         onApprovalDecide={handleApprovalDecide}

@@ -14,6 +14,8 @@ export async function POST(request: Request) {
       conversationId: started.conversationId,
       workflow: started.workflow,
       workflowRequest: started.workflowRequest,
+      userMessageId: started.userMessageId,
+      assistantMessageId: started.assistantMessageId,
     });
   } catch (error) {
     return NextResponse.json(

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { AgentContext } from "@/lib/agent/context";
 import { executeLoggedTool } from "@/lib/agent/tools/tool-utils";
+import { createFailedToolReceipt } from "@/types/tool-receipt";
 
 type Ctx = RunContext<AgentContext> | undefined;
 
@@ -22,9 +23,13 @@ export const getCurrentContextTool = tool({
 export const getProjectContextTool = tool({
   name: "get_project_context",
   description:
-    "Load a project by id, including instructions, source summaries, and candidate action items.",
+    "Load a project/collection by id (Business/Life/Technology/Study/Art or a user-created project), including instructions and source summaries.",
   parameters: z.object({
-    projectId: z.string().describe("Project id. Use proj_launch_prep_001 for the seed project."),
+    projectId: z
+      .string()
+      .describe(
+        "Project id, e.g. proj_business_001, proj_life_001, proj_technology_001, proj_study_001, proj_art_001.",
+      ),
   }),
   strict: true,
   execute: async ({ projectId }, runContext: Ctx) =>
@@ -36,13 +41,13 @@ export const getProjectContextTool = tool({
 export const searchPersonalKnowledgeTool = tool({
   name: "search_personal_knowledge",
   description:
-    "Search project personal knowledge / sources for relevant excerpts. Prefer this before guessing project facts.",
+    "Search personal knowledge / project sources. Pass projectId to scope one collection; pass null to search across all collections.",
   parameters: z.object({
     query: z.string().describe("Search query in Chinese or English."),
     projectId: z
       .string()
       .nullable()
-      .describe("Optional project id. Defaults to the seed launch project when null."),
+      .describe("Optional project id. Null searches all collections."),
   }),
   strict: true,
   execute: async ({ query, projectId }, runContext: Ctx) =>
@@ -50,22 +55,32 @@ export const searchPersonalKnowledgeTool = tool({
       "search_personal_knowledge",
       { query, projectId },
       runContext,
-      (context) =>
-        context.services.searchPersonalKnowledge(query, projectId ?? context.projectId),
+      (context) => context.services.searchPersonalKnowledge(query, projectId),
     ),
 });
 
 export const searchWebTool = tool({
   name: "search_web",
-  description: "Search the web via the configured adapter (Mock in PoC).",
+  description:
+    "Search the live public web via the configured real provider. Results include title, URL, and snippet; cite returned URLs.",
   parameters: z.object({
     query: z.string().describe("Web search query."),
   }),
   strict: true,
   execute: async ({ query }, runContext: Ctx) =>
-    executeLoggedTool("search_web", { query }, runContext, (context) =>
-      context.services.searchWeb(query),
-    ),
+    executeLoggedTool("search_web", { query }, runContext, (context) => {
+      if (!context.permissions.canSearchWeb) {
+        return Promise.resolve(
+          createFailedToolReceipt(
+            "search_web",
+            "WEB_SEARCH_FORBIDDEN",
+            "当前用户没有 Web Search 权限。",
+            false,
+          ),
+        );
+      }
+      return context.services.searchWeb(query);
+    }),
 });
 
 export const getMeetingContextTool = tool({
@@ -151,6 +166,39 @@ export const createTodoTool = tool({
           title,
           dueAt: dueAt ?? undefined,
           projectId: projectId ?? context.projectId,
+          idempotencyKey: idempotencyKey ?? undefined,
+        }),
+    ),
+});
+
+export const createCalendarEventTool = tool({
+  name: "create_calendar_event",
+  description:
+    "Write one meeting-derived action item to the Mock Tablet calendar and return a visible result receipt. This demo tool does not call a production calendar.",
+  parameters: z.object({
+    title: z.string(),
+    startAt: z.string().describe("ISO 8601 event start."),
+    endAt: z.string().describe("ISO 8601 event end."),
+    notes: z.string().nullable(),
+    sourceId: z.string().nullable().describe("Meeting-minutes source id when available."),
+    idempotencyKey: z.string().nullable(),
+  }),
+  strict: true,
+  execute: async (
+    { title, startAt, endAt, notes, sourceId, idempotencyKey },
+    runContext: Ctx,
+  ) =>
+    executeLoggedTool(
+      "create_calendar_event",
+      { title, startAt, endAt, notes, sourceId, idempotencyKey },
+      runContext,
+      (context) =>
+        context.services.createCalendarEvent({
+          title,
+          startAt,
+          endAt,
+          notes: notes ?? undefined,
+          sourceId: sourceId ?? undefined,
           idempotencyKey: idempotencyKey ?? undefined,
         }),
     ),

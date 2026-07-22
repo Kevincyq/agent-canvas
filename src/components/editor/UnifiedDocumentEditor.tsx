@@ -69,7 +69,7 @@ export function UnifiedDocumentEditor({ blocks, onClose, onSave, onSaveAsNew }: 
         </header>
 
         <div className="document-editor-layout">
-          <nav className="document-editor-blocks" aria-label="内容块">
+          <nav className="document-editor-blocks" aria-label="答复章节">
             {draftBlocks.map((block, index) => (
               <button
                 type="button"
@@ -91,7 +91,7 @@ export function UnifiedDocumentEditor({ blocks, onClose, onSave, onSaveAsNew }: 
               <>
                 <BlockEditor block={selectedBlock} onChange={updateBlock} />
                 <section className="document-editor-preview">
-                  <h3>实时预览</h3>
+                  <h3>预览</h3>
                   <ContentBlockPreview block={selectedBlock} />
                 </section>
               </>

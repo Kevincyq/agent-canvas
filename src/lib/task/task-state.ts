@@ -12,7 +12,7 @@ export function isTerminalStatus(status: ConversationStatus): boolean {
 export function titleFromFirstMessage(message: string, maxLength = 48): string {
   const normalized = message.replace(/\s+/g, " ").trim();
   if (!normalized) {
-    return "New chat";
+    return "New task";
   }
   if (normalized.length <= maxLength) {
     return normalized;

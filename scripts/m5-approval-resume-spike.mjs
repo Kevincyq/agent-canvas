@@ -232,7 +232,7 @@ async function main() {
           written: true,
           title,
           dueAt,
-          projectId: projectId || "proj_launch_prep_001",
+          projectId: projectId || "proj_business_001",
           todoId: `todo_${randomUUID().slice(0, 8)}`,
         },
         verifiedAt: new Date().toISOString(),

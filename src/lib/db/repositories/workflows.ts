@@ -40,7 +40,7 @@ function mapRow(row: WorkflowRow): DralkWorkflowRecord {
 
 export function getWorkflowById(id: string): DralkWorkflowRecord | null {
   const row = getDb()
-    .prepare("SELECT * FROM workflow_states WHERE id = ?")
+    .prepare("SELECT * FROM workflow_states WHERE id = ? AND workflow_type = 'dralk_input'")
     .get(id) as WorkflowRow | undefined;
   return row ? mapRow(row) : null;
 }

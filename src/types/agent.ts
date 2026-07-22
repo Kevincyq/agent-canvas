@@ -68,6 +68,10 @@ export const AgentActionSchema = z.discriminatedUnion("type", [
     force_new: z.boolean().default(true),
   }),
   z.object({
+    type: z.literal("open_meeting_workflow"),
+    meetingId: z.string().nullable().default(null),
+  }),
+  z.object({
     type: z.literal("render_chart"),
     spec: PlotSpecSchema,
   }),

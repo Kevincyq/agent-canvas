@@ -8,7 +8,46 @@ import {
 
 const MAX_INPUT_CHARS = 40_000;
 
-function inputText(input: string | unknown[]): string {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isUserInputItem(item: unknown): boolean {
+  if (!isRecord(item)) {
+    return false;
+  }
+
+  if (item.role === "user") {
+    return true;
+  }
+
+  return item.type === "message" && item.role === "user";
+}
+
+/**
+ * Agents SDK merges Session history into `input` before guardrails run.
+ * Oversized checks must measure only this turn's user payload, not full history.
+ */
+function currentTurnInputText(input: string | unknown[]): string {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (isUserInputItem(item)) {
+      return JSON.stringify(item);
+    }
+  }
+
+  if (input.length === 0) {
+    return "";
+  }
+
+  return JSON.stringify(input[input.length - 1]);
+}
+
+function fullInputText(input: string | unknown[]): string {
   if (typeof input === "string") {
     return input;
   }
@@ -19,7 +58,7 @@ export const emptyInputGuardrail: InputGuardrail = {
   name: "reject_empty_input",
   runInParallel: false,
   execute: async ({ input }) => {
-    const text = inputText(input).trim();
+    const text = currentTurnInputText(input).trim();
     return {
       tripwireTriggered: text.length === 0,
       outputInfo: { reason: text.length === 0 ? "empty_input" : "ok" },
@@ -31,7 +70,7 @@ export const oversizedInputGuardrail: InputGuardrail = {
   name: "reject_oversized_input",
   runInParallel: true,
   execute: async ({ input }) => {
-    const text = inputText(input);
+    const text = currentTurnInputText(input);
     const oversized = text.length > MAX_INPUT_CHARS;
     return {
       tripwireTriggered: oversized,
@@ -39,6 +78,8 @@ export const oversizedInputGuardrail: InputGuardrail = {
         reason: oversized ? "oversized_input" : "ok",
         length: text.length,
         max: MAX_INPUT_CHARS,
+        // Help debug false positives when Session history is large.
+        preparedInputLength: fullInputText(input).length,
       },
     };
   },
@@ -56,11 +97,11 @@ export const unverifiedWriteClaimGuardrail: OutputGuardrail<
     const output = agentOutput as AskAiStructuredOutput;
     const text = `${output.message}\n${JSON.stringify(output.blocks)}`;
     const claimsWrite =
-      /已写入待办|已创建待办|已保存到项目|todo (created|written)|successfully wrote|saved to project/i.test(
+      /已写入待办|已创建待办|已保存到项目|已写入.{0,12}日历|todo (created|written)|calendar (created|written)|successfully wrote|saved to project/i.test(
         text,
       );
     const hasReceiptEvidence = output.evidence.some((item) =>
-      /tool_receipt|create_todo|save_artifact|todo|artifact/i.test(
+      /tool_receipt|create_todo|create_calendar_event|save_artifact|todo|calendar|日历|artifact/i.test(
         `${item.id} ${item.source} ${item.label}`,
       ),
     );

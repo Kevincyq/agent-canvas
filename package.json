@@ -20,7 +20,9 @@
     "spike:m4": "node --env-file=.env.local scripts/m4-dralk-workflow-spike.mjs",
     "spike:m5": "node --env-file=.env.local scripts/m5-approval-resume-spike.mjs",
     "spike:m6": "node --env-file=.env.local scripts/m6-project-ux-spike.mjs",
-    "spike:m7": "node --env-file=.env.local scripts/m7-eval-observability-spike.mjs"
+    "spike:m7": "node --env-file=.env.local scripts/m7-eval-observability-spike.mjs",
+    "reset:mock": "node --env-file=.env.local scripts/reset-mock-data.mjs"
+
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.4",

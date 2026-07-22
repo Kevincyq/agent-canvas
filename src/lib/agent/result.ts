@@ -58,7 +58,13 @@ export const AskAiOutputBlockSchema = z.object({
 });
 
 export const AskAiSuggestedActionSchema = z.object({
-  type: z.enum(["open_handwriting_canvas", "render_chart", "reply", "none"]),
+  type: z.enum([
+    "open_handwriting_canvas",
+    "open_meeting_workflow",
+    "render_chart",
+    "reply",
+    "none",
+  ]),
   mode: z.enum(["general", "structure"]).nullable(),
   language: z.string().nullable(),
   prompt: z.string().nullable(),
@@ -67,6 +73,7 @@ export const AskAiSuggestedActionSchema = z.object({
   chartTitle: z.string().nullable(),
   chartExpression: z.string().nullable(),
   replyMessage: z.string().nullable(),
+  meetingId: z.string().nullable(),
 });
 
 export const AskAiStructuredOutputSchema = z.object({
@@ -166,6 +173,11 @@ function mapSuggestedAction(action: AskAiSuggestedAction): AgentAction | null {
         language: action.language ?? "",
         prompt: action.prompt ?? "",
         force_new: action.forceNew ?? true,
+      };
+    case "open_meeting_workflow":
+      return {
+        type: "open_meeting_workflow",
+        meetingId: action.meetingId,
       };
     case "render_chart":
       if (action.chartKind === "function" && action.chartExpression) {

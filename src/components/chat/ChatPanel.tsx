@@ -5,18 +5,20 @@ import type { ReactNode } from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApprovalCardList } from "@/components/chat/ApprovalCardList";
+import { AssistantMessageActions } from "@/components/chat/AssistantMessageActions";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { EvidenceList } from "@/components/chat/EvidenceList";
-import { ToolReceiptCard } from "@/components/chat/ToolReceiptCard";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import { PlotCard } from "@/components/chart/PlotCard";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
 import { ContentBlockCard } from "@/components/content/ContentBlockCard";
 import { UnifiedDocumentEditor } from "@/components/editor/UnifiedDocumentEditor";
 import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
+import { MeetingWorkflowCard } from "@/components/meeting/MeetingWorkflowCard";
 import type { ChatMessage, AgentAttachment } from "@/types/agent";
 import type { ApprovalCard } from "@/types/agent-runtime";
 import type { ContentBlock } from "@/types/content-block";
+import type { MeetingWorkflowRecord } from "@/types/meeting-workflow";
 
 type ChatPanelProps = {
   messages: ChatMessage[];
@@ -28,9 +30,17 @@ type ChatPanelProps = {
   voiceAttachment?: AgentAttachment | null;
   workflowStatusLabel?: string | null;
   approvals?: ApprovalCard[];
+  meetingWorkflow?: MeetingWorkflowRecord | null;
+  navOpen?: boolean;
+  onToggleNav?: () => void;
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
   onStartDralk?: () => Promise<void>;
+  onCancelDralk?: () => Promise<void>;
+  onStartMeeting?: () => Promise<void>;
+  onFinishMeeting?: () => Promise<void>;
+  onWriteMeetingCalendar?: () => Promise<void>;
+  dralkActive?: boolean;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
   onUpdateMessageBlocks: (messageId: string, blocks: ContentBlock[]) => void;
   onApprovalDecide?: (input: {
@@ -39,6 +49,22 @@ type ChatPanelProps = {
   }) => Promise<void>;
   onOpenArtifact?: (artifactId: string) => void;
 };
+
+function precedingUserPrompt(messages: ChatMessage[], assistantMessageId: string): string | null {
+  const index = messages.findIndex((message) => message.id === assistantMessageId);
+  if (index < 0) {
+    return null;
+  }
+
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const candidate = messages[cursor];
+    if (candidate?.role === "user" && candidate.content.trim()) {
+      return candidate.content.trim();
+    }
+  }
+
+  return null;
+}
 
 export function ChatPanel({
   messages,
@@ -50,13 +76,20 @@ export function ChatPanel({
   voiceAttachment = null,
   workflowStatusLabel = null,
   approvals = [],
+  meetingWorkflow = null,
+  navOpen = false,
+  onToggleNav,
   onDraftChange,
   onSend,
   onStartDralk,
+  onCancelDralk,
+  onStartMeeting,
+  onFinishMeeting,
+  onWriteMeetingCalendar,
+  dralkActive = false,
   onCreateDocument,
   onUpdateMessageBlocks,
   onApprovalDecide,
-  onOpenArtifact,
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -98,14 +131,54 @@ export function ChatPanel({
   }
 
   return (
-    <section className="chat-panel" aria-label="对话区">
+    <section className="chat-panel" aria-label="AskAI 任务区">
       <div className="panel-header">
-        <h1 className="panel-title">Dralk Agent</h1>
-        <span
-          className={busy ? "status-dot busy" : "status-dot"}
+        <div className="panel-header-leading">
+          {onToggleNav ? (
+            <button
+              type="button"
+              className="nav-menu-btn"
+              aria-label={navOpen ? "关闭导航栏" : "打开导航栏"}
+              aria-expanded={navOpen}
+              onClick={onToggleNav}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+                {navOpen ? (
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <path
+                    d="M4 7h16M4 12h16M4 17h16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                )}
+              </svg>
+            </button>
+          ) : null}
+          <div className="brand-lockup">
+            <h1 className="brand-lockup-title">
+              Ask<span>AI</span> Agent
+            </h1>
+            <p className="brand-lockup-sub">任务 · 工具 · Dralk</p>
+          </div>
+        </div>
+        <div
+          className="status-chip"
+          data-state={busy ? "busy" : "ready"}
           aria-label={busy ? "运行中" : "就绪"}
           title={busy ? "运行中" : "就绪"}
-        />
+        >
+          <span className={busy ? "status-dot busy" : "status-dot"} />
+          {busy ? "思考中" : "就绪"}
+        </div>
       </div>
 
       <div ref={messageListRef} className="message-list">
@@ -116,7 +189,7 @@ export function ChatPanel({
                 <span>新文档</span>
                 <div>
                   <strong>{message.document.title}</strong>
-                  <small>已保留原答复，可继续编辑或下载内容块</small>
+                  <small>已保留原答复，可继续编辑或下载</small>
                 </div>
               </article>
             ) : message.role === "user" ? (
@@ -131,18 +204,38 @@ export function ChatPanel({
                 <VoiceAttachmentCard attachment={attachment} status="sent" compact />
               </div>
             ))}
-            {message.blocks?.map((block) => (
-              <div key={`${message.id}-${block.id}`} className="message-content-block-slot">
-                <ContentBlockCard block={block} onEdit={() => setEditingMessageId(message.id)} />
+            {message.blocks && message.blocks.length > 0 ? (
+              <div className="message-content-block-slot">
+                <ContentBlockCard
+                  blocks={message.blocks}
+                  onEdit={() => setEditingMessageId(message.id)}
+                />
               </div>
-            ))}
+            ) : null}
             {message.role === "assistant" ? (
               <>
                 <EvidenceList evidence={message.evidence} />
-                <ToolReceiptCard
-                  evidence={message.evidence}
-                  artifacts={message.artifacts}
-                  onOpenArtifact={onOpenArtifact}
+                <AssistantMessageActions
+                  messageId={message.id}
+                  content={message.content}
+                  blocks={message.blocks}
+                  busy={busy}
+                  onRegenerate={() => {
+                    const prompt = precedingUserPrompt(messages, message.id);
+                    if (prompt) {
+                      void onSend(prompt);
+                    }
+                  }}
+                  onSaveAsNote={() => {
+                    const blocks = message.blocks ?? [];
+                    if (blocks.length === 0) {
+                      return;
+                    }
+                    const title =
+                      blocks.find((block) => block.title)?.title?.trim() ||
+                      "AskAI 笔记";
+                    onCreateDocument(message.id, title, blocks);
+                  }}
                 />
               </>
             ) : null}
@@ -174,17 +267,52 @@ export function ChatPanel({
         />
       ) : null}
 
+      {meetingWorkflow ? (
+        <MeetingWorkflowCard
+          workflow={meetingWorkflow}
+          busy={busy}
+          onFinish={() => {
+            void onFinishMeeting?.();
+          }}
+          onWriteCalendar={() => {
+            void onWriteMeetingCalendar?.();
+          }}
+        />
+      ) : null}
+
       <form className="composer" onSubmit={handleSubmit}>
         <div className="composer-toolbar">
+          {dralkActive ? (
+            <button
+              type="button"
+              className="composer-tool-btn composer-dralk-cancel"
+              disabled={busy}
+              onClick={() => {
+                void onCancelDralk?.();
+              }}
+            >
+              结束 Dralk
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="composer-tool-btn composer-dralk-btn"
+              disabled={busy || !onStartDralk}
+              onClick={() => {
+                void onStartDralk?.();
+              }}
+            >
+              Dralk
+            </button>
+          )}
           <button
             type="button"
-            className="composer-dralk-btn"
-            disabled={busy || !onStartDralk}
-            onClick={() => {
-              void onStartDralk?.();
-            }}
+            className="composer-tool-btn composer-meeting-btn is-display-only"
+            disabled
+            aria-disabled="true"
+            title="演示入口：示意可通过会议打开上下文（暂未启用）"
           >
-            Dralk
+            会议
           </button>
           {workflowStatusLabel ? (
             <span className="composer-workflow-status" aria-live="polite">
@@ -196,7 +324,7 @@ export function ChatPanel({
           <textarea
             ref={textareaRef}
             value={draft}
-            placeholder="例如：打开画布或手写输入..."
+            placeholder="向 AskAI 提问，或先用 Dralk 输入..."
             rows={2}
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {

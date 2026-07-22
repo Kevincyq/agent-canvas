@@ -11,8 +11,8 @@ export type ServiceAdapters = {
   ) => Promise<ToolReceipt<Record<string, unknown>>>;
   searchPersonalKnowledge: (
     query: string,
-    projectId?: string,
-  ) => Promise<ToolReceipt<{ hits: unknown[]; projectId?: string; query?: string }>>;
+    projectId?: string | null,
+  ) => Promise<ToolReceipt<{ hits: unknown[]; projectId?: string | null; query?: string }>>;
   searchWeb: (
     query: string,
   ) => Promise<ToolReceipt<{ hits: unknown[]; query?: string; provider?: string }>>;
@@ -43,5 +43,23 @@ export type ServiceAdapters = {
     idempotencyKey?: string;
   }) => Promise<
     ToolReceipt<{ todoId: string; written: boolean; provider: string; title?: string }>
+  >;
+  createCalendarEvent: (input: {
+    title: string;
+    startAt: string;
+    endAt: string;
+    notes?: string;
+    sourceId?: string;
+    idempotencyKey?: string;
+  }) => Promise<
+    ToolReceipt<{
+      eventId: string;
+      title: string;
+      startAt: string;
+      endAt: string;
+      calendarName: string;
+      written: boolean;
+      provider: string;
+    }>
   >;
 };

@@ -106,16 +106,39 @@ async function getSharedMcpServer(): Promise<ConnectableMcpServer> {
   return sharedMcpConnectPromise;
 }
 
+function formatMcpError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes("timed out") || message.includes("-32001")) {
+    return new Error(
+      `FluxInk MCP 请求超时（-32001）。请确认 MCP_SERVER_URL 指向可用的 FluxInk 服务，或增大 MCP_TIMEOUT_MS 后重试。原始错误：${message}`,
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 async function withMcpServer<T>(operation: (server: ConnectableMcpServer) => Promise<T>): Promise<T> {
   try {
     const server = await getSharedMcpServer();
     return await operation(server);
   } catch (error) {
-    if (isMcpSessionError(error)) {
-      await resetSharedMcpServer();
+    if (!isMcpSessionError(error)) {
+      throw formatMcpError(error);
     }
 
-    throw error;
+    // One reconnect retry for transient session/timeouts on the shared MCP client.
+    await resetSharedMcpServer();
+
+    try {
+      const server = await getSharedMcpServer();
+      return await operation(server);
+    } catch (retryError) {
+      if (isMcpSessionError(retryError)) {
+        await resetSharedMcpServer();
+      }
+      throw formatMcpError(retryError);
+    }
   }
 }
 
@@ -281,7 +304,12 @@ export async function readMcpUiResource(uri: string): Promise<{ contents: McpUiR
     }
 
     if (contents.length === 0) {
-      throw new Error(`MCP UI resource did not include HTML content: ${uri}`);
+      const rawKeys = (response.contents ?? []).map((item) => Object.keys(item));
+      throw new Error(
+        `MCP UI resource returned no HTML for ${uri} ` +
+          `(contents=${response.contents?.length ?? 0}, keys=${JSON.stringify(rawKeys)}). ` +
+          `FluxInk server may be empty or the server id may no longer be registered.`,
+      );
     }
 
     return { contents };

@@ -44,6 +44,7 @@ function enrichEvidenceFromToolRuns(
   }
 
   const existingSources = new Set(evidence.map((item) => item.source));
+  const existingIds = new Set(evidence.map((item) => item.id));
   const merged = [...evidence];
 
   for (const run of listToolRunsByRequest(requestId)) {
@@ -56,11 +57,47 @@ function enrichEvidenceFromToolRuns(
     } catch {
       continue;
     }
+
+    if (
+      run.toolName === "search_web" &&
+      receipt?.ok &&
+      typeof receipt.data === "object" &&
+      receipt.data !== null
+    ) {
+      const hits = (receipt.data as { hits?: unknown[] }).hits ?? [];
+      for (const [index, hit] of hits.entries()) {
+        if (!hit || typeof hit !== "object") {
+          continue;
+        }
+        const item = hit as { url?: unknown; title?: unknown };
+        if (typeof item.url !== "string" || typeof item.title !== "string") {
+          continue;
+        }
+        if (existingSources.has(item.url)) {
+          continue;
+        }
+        const citationId = `${receipt.executionId}:web:${index}`;
+        existingSources.add(item.url);
+        existingIds.add(citationId);
+        merged.push({
+          id: citationId,
+          label: item.title,
+          source: item.url,
+        });
+      }
+    }
+
     const source = `tool_receipt:${run.toolName}`;
     if (existingSources.has(source)) {
       continue;
     }
+    const id = receipt?.executionId || run.id;
+    if (existingIds.has(id)) {
+      // Model already cited this receipt under another source label.
+      continue;
+    }
     existingSources.add(source);
+    existingIds.add(id);
     const written =
       receipt?.ok &&
       typeof receipt.data === "object" &&
@@ -68,13 +105,22 @@ function enrichEvidenceFromToolRuns(
       "written" in (receipt.data as Record<string, unknown>)
         ? Boolean((receipt.data as { written?: boolean }).written)
         : receipt?.ok;
+    const calendarData =
+      run.toolName === "create_calendar_event" &&
+      receipt?.ok &&
+      typeof receipt.data === "object" &&
+      receipt.data !== null
+        ? (receipt.data as { title?: string; startAt?: string; calendarName?: string })
+        : null;
     merged.push({
-      id: receipt?.executionId || run.id,
-      label: written
-        ? `${run.toolName} 已写入`
-        : receipt?.ok
-          ? `${run.toolName} 完成`
-          : `${run.toolName} 失败`,
+      id,
+      label: calendarData?.title
+        ? `已写入 ${calendarData.calendarName ?? "Tablet 日历"}：${calendarData.title}${calendarData.startAt ? ` · ${calendarData.startAt}` : ""}`
+        : written
+          ? `${run.toolName} 已写入`
+          : receipt?.ok
+            ? `${run.toolName} 完成`
+            : `${run.toolName} 失败`,
       source,
     });
   }
@@ -186,7 +232,10 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
   conversationTaskStore.update(conversationFresh.id, { status: "running" });
 
   const activeBefore = getActiveDralkWorkflow(conversationFresh.id);
-  if (activeBefore && (input.dralkContext || input.attachments.length > 0 || input.canvas?.isOpen)) {
+  const shouldConsumeDralk = Boolean(input.dralkContext || input.attachments.length > 0);
+  // Only advance Dralk when this turn carries handwriting/voice context.
+  // Never use canvas.isOpen alone — that forced status=running and trapped the UI.
+  if (activeBefore && shouldConsumeDralk) {
     if (input.dralkContext) {
       try {
         transitionDralkWorkflow({
@@ -211,7 +260,12 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     attachments: input.attachments,
   });
 
-  if (conversationFresh.title === "New chat" || conversationFresh.title === "Dralk 输入") {
+  if (
+    conversationFresh.title === "New chat" ||
+    conversationFresh.title === "New task" ||
+    conversationFresh.title === "Dralk 输入" ||
+    conversationFresh.title === "AskAI · Dralk"
+  ) {
     conversationTaskStore.update(conversationFresh.id, {
       title: titleFromFirstMessage(input.message),
     });
@@ -269,10 +323,24 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
         language: openCanvasAction.language,
         forceNew: openCanvasAction.force_new,
       });
-    } else if (getActiveDralkWorkflow(conversationFresh.id)) {
-      completeDralkWorkflow(conversationFresh.id);
+    } else if (shouldConsumeDralk) {
+      // This turn used Dralk input — close the workflow.
+      if (getActiveDralkWorkflow(conversationFresh.id)) {
+        completeDralkWorkflow(conversationFresh.id);
+      } else {
+        conversationTaskStore.update(conversationFresh.id, { status: "ready", currentStep: null });
+      }
     } else {
-      conversationTaskStore.update(conversationFresh.id, { status: "ready", currentStep: null });
+      const stillActive = getActiveDralkWorkflow(conversationFresh.id);
+      if (stillActive) {
+        // Keep Dralk session open while user chats; restore waiting status.
+        conversationTaskStore.update(conversationFresh.id, {
+          status: "waiting_for_input",
+          currentStep: `dralk:${stillActive.status}`,
+        });
+      } else {
+        conversationTaskStore.update(conversationFresh.id, { status: "ready", currentStep: null });
+      }
     }
   }
 

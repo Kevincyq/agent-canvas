@@ -3,6 +3,7 @@ import {
   RunState,
   RunContext,
   setTracingDisabled,
+  type AgentInputItem,
   type Session,
   type RunToolApprovalItem,
 } from "@openai/agents";
@@ -29,6 +30,46 @@ import {
   type ApprovalRecord,
 } from "@/lib/db/repositories/approvals";
 import type { AgentRequest, AgentResponse } from "@/types/agent";
+
+/** Soft cap for Session history sent to the model (current turn always kept). */
+const MAX_SESSION_HISTORY_CHARS = 80_000;
+const MAX_ATTACHMENT_CONTENT_CHARS = 8_000;
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  return `${value.slice(0, maxChars)}\n…[truncated ${value.length - maxChars} chars]`;
+}
+
+/**
+ * Keep newest history items that fit the budget, then append this turn's items.
+ * Prevents multi-turn tool/diagram payloads from blowing context or guardrails.
+ */
+export function trimSessionInputForModel(
+  historyItems: AgentInputItem[],
+  newItems: AgentInputItem[],
+): AgentInputItem[] {
+  const newItemsSize = JSON.stringify(newItems).length;
+  let size = newItemsSize;
+  const keptNewest: AgentInputItem[] = [];
+
+  for (let index = historyItems.length - 1; index >= 0; index -= 1) {
+    const item = historyItems[index]!;
+    const itemSize = JSON.stringify(item).length;
+
+    if (keptNewest.length > 0 && size + itemSize > MAX_SESSION_HISTORY_CHARS) {
+      break;
+    }
+
+    keptNewest.push(item);
+    size += itemSize;
+  }
+
+  keptNewest.reverse();
+  return [...keptNewest, ...newItems];
+}
 
 export type RunnerTurnInput = {
   context: AgentContext;
@@ -88,14 +129,14 @@ export function resetSharedRunnerForTests() {
 export function buildCurrentTurnPrompt(request: AgentRequest): string {
   return JSON.stringify({
     task: "Answer via structured output. Use Session history for follow-ups; do not expect recentHistory.",
-    userMessage: request.message,
+    userMessage: truncateText(request.message, MAX_ATTACHMENT_CONTENT_CHARS * 4),
     canvas: request.canvas ?? null,
     attachments: request.attachments.map((attachment) => ({
       id: attachment.id,
       name: attachment.name,
       kind: attachment.kind,
       mimeType: attachment.mimeType,
-      content: attachment.content,
+      content: truncateText(attachment.content, MAX_ATTACHMENT_CONTENT_CHARS),
       metadata: attachment.metadata,
     })),
   });
@@ -247,6 +288,7 @@ export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnRe
     const result = await runner.run(agent, input.prompt, {
       context: input.context,
       session: input.session,
+      sessionInputCallback: trimSessionInputForModel,
     });
 
     return finalizeResult(

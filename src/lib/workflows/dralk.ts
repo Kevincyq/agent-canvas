@@ -35,7 +35,7 @@ const EVENT_TRANSITIONS: Record<
     to: "attached",
   },
   cancelled: {
-    from: ["waiting_for_input", "capturing", "recognized"],
+    from: ["waiting_for_input", "capturing", "recognized", "attached", "running"],
     to: "cancelled",
   },
   failed: {
@@ -43,7 +43,7 @@ const EVENT_TRANSITIONS: Record<
     to: "failed",
   },
   completed: {
-    from: ["attached", "running", "recognized"],
+    from: ["attached", "running", "recognized", "capturing", "waiting_for_input"],
     to: "completed",
   },
 };
@@ -106,25 +106,32 @@ export function startDralkWorkflow(input: StartDralkWorkflowRequest): {
   conversationId: string;
   workflow: DralkWorkflowRecord;
   workflowRequest: WorkflowRequest;
+  userMessageId: string;
+  assistantMessageId: string;
 } {
   const conversation = conversationTaskStore.ensure(input.conversationId, {
     userId: input.userId,
-    title: "Dralk 输入",
-    originSurface: "dralk",
+    title: input.origin === "user_button" ? "AskAI · Dralk" : "AskAI",
+    originSurface: input.origin === "user_button" ? "dralk" : "askai",
   });
 
   const existing = getActiveDralkWorkflow(conversation.id);
   if (existing && !input.forceNew) {
     syncConversationStatus(conversation.id, existing.status);
+    const recent = conversationTaskStore.listMessages(conversation.id);
+    const lastAssistant = [...recent].reverse().find((item) => item.role === "assistant");
     return {
       conversationId: conversation.id,
       workflow: existing,
       workflowRequest: toWorkflowRequest(existing),
+      userMessageId: "",
+      assistantMessageId: lastAssistant?.id ?? "",
     };
   }
 
   if (existing && input.forceNew) {
     updateDralkWorkflow(existing.id, { status: "cancelled" });
+    syncConversationStatus(conversation.id, "cancelled");
   }
 
   const payload = DralkWorkflowPayloadSchema.parse({
@@ -146,10 +153,42 @@ export function startDralkWorkflow(input: StartDralkWorkflowRequest): {
 
   syncConversationStatus(conversation.id, workflow.status);
 
+  let userMessageId = "";
+  let assistantMessageId = "";
+
+  // Button entry must appear in the chat timeline. Agent-intent entry already has
+  // the assistant turn that requested the canvas — avoid duplicate messages.
+  if (input.origin === "user_button") {
+    const userMessage = conversationTaskStore.appendMessage({
+      conversationId: conversation.id,
+      role: "user",
+      content: "打开 Dralk 手写输入",
+    });
+    const assistantMessage = conversationTaskStore.appendMessage({
+      conversationId: conversation.id,
+      role: "assistant",
+      content:
+        "已打开 Dralk 手写画布。写完后点发送到输入框，补充说明后再发给 AskAI；也可随时结束 Dralk。",
+    });
+    userMessageId = userMessage.id;
+    assistantMessageId = assistantMessage.id;
+
+    if (
+      conversation.title === "New chat" ||
+      conversation.title === "New task" ||
+      conversation.title === "Dralk 输入" ||
+      conversation.title === "AskAI"
+    ) {
+      conversationTaskStore.update(conversation.id, { title: "AskAI · Dralk" });
+    }
+  }
+
   return {
     conversationId: conversation.id,
     workflow,
     workflowRequest: toWorkflowRequest(workflow),
+    userMessageId,
+    assistantMessageId,
   };
 }
 
@@ -238,13 +277,39 @@ export function completeDralkWorkflow(conversationId: string): void {
   if (!active) {
     return;
   }
-  if (active.status === "running" || active.status === "attached" || active.status === "recognized") {
+  if (
+    active.status === "running" ||
+    active.status === "attached" ||
+    active.status === "recognized" ||
+    active.status === "capturing" ||
+    active.status === "waiting_for_input"
+  ) {
     transitionDralkWorkflow({
       conversationId,
       workflowId: active.id,
       event: "completed",
     });
   }
+}
+
+export function cancelDralkWorkflow(conversationId: string, workflowId?: string): DralkWorkflowRecord | null {
+  const workflow =
+    (workflowId ? getWorkflowById(workflowId) : null) ?? getActiveDralkWorkflow(conversationId);
+  if (!workflow || workflow.conversationId !== conversationId) {
+    return null;
+  }
+  if (
+    workflow.status === "completed" ||
+    workflow.status === "cancelled" ||
+    workflow.status === "failed"
+  ) {
+    return workflow;
+  }
+  return transitionDralkWorkflow({
+    conversationId,
+    workflowId: workflow.id,
+    event: "cancelled",
+  });
 }
 
 export function startDralkFromAgentIntent(input: {

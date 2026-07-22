@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ServiceAdapters } from "@/lib/services/adapters";
-import { createMockServiceAdapters } from "@/lib/services/mock";
+import { createServiceAdapters } from "@/lib/services";
 import { SEED_PROJECT } from "@/lib/services/mock/fixtures";
 
 export type PermissionSnapshot = {
@@ -68,7 +68,7 @@ export function createAgentContext(input: CreateAgentContextInput): AgentContext
       ...DEFAULT_PERMISSIONS,
       ...input.permissions,
     },
-    services: input.services ?? createMockServiceAdapters(),
+    services: input.services ?? createServiceAdapters(),
     requestId: input.requestId ?? randomUUID(),
   };
 }

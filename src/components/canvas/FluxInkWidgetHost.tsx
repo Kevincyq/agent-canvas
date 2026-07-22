@@ -85,6 +85,18 @@ function asCallToolError(message: string): Record<string, unknown> {
   };
 }
 
+function formatWidgetHostError(message: string): string {
+  if (message.includes("timed out") || message.includes("-32001")) {
+    return "FluxInk 画布服务超时。请检查 MCP_SERVER_URL 是否可用，稍后重试识别。";
+  }
+
+  if (message.includes("no HTML") || message.includes("empty")) {
+    return "FluxInk UI 资源为空或服务器未注册。请更新 MCP_SERVER_URL 后重新打开 Dralk。";
+  }
+
+  return message;
+}
+
 async function proxyHostJsonRpc(
   method: string,
   params?: Record<string, unknown>,
@@ -408,9 +420,9 @@ export function FluxInkWidgetHost({
             propsRef.current.onRecognitionChange({
               text: "",
               status: "error",
-              error: proxied.message,
+              error: formatWidgetHostError(proxied.message),
             });
-            return asCallToolError(proxied.message);
+            return asCallToolError(formatWidgetHostError(proxied.message));
           }
 
           const toolResult = asCallToolResult(proxied.result, params.name);
@@ -549,7 +561,9 @@ export function FluxInkWidgetHost({
         propsRef.current.onRecognitionChange({
           text: "",
           status: "error",
-          error: error instanceof Error ? error.message : "FluxInk widget 初始化失败",
+          error: formatWidgetHostError(
+            error instanceof Error ? error.message : "FluxInk widget 初始化失败",
+          ),
         });
       }
     }

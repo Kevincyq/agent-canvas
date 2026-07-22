@@ -5,6 +5,7 @@ import {
   listProjectSources,
   searchProjectSources,
 } from "@/lib/db/repositories/projects";
+import { insertMockCalendarEvent } from "@/lib/db/repositories/calendar";
 import type { ServiceAdapters } from "@/lib/services/adapters";
 import {
   SEED_ACTION_CANDIDATES,
@@ -124,8 +125,8 @@ export function createMockServiceAdapters(): ServiceAdapters {
       });
     },
 
-    searchPersonalKnowledge: async (query, projectId = SEED_PROJECT.id) => {
-      const matches = searchProjectSources(projectId, query, 5);
+    searchPersonalKnowledge: async (query, projectId) => {
+      const matches = searchProjectSources(projectId || null, query, 5);
       const hits: KnowledgeHit[] = matches.map((source, index) => ({
         sourceId: source.id,
         title: source.title,
@@ -133,11 +134,15 @@ export function createMockServiceAdapters(): ServiceAdapters {
         scoreHint: Math.max(1, matches.length - index),
       }));
 
-      return createToolReceipt<{ hits: KnowledgeHit[]; projectId: string; query: string }>({
+      return createToolReceipt<{
+        hits: KnowledgeHit[];
+        projectId: string | null;
+        query: string;
+      }>({
         ok: true,
         tool: "search_personal_knowledge",
         data: {
-          projectId,
+          projectId: projectId || null,
           query,
           hits,
         },
@@ -237,6 +242,15 @@ export function createMockServiceAdapters(): ServiceAdapters {
       return createToolReceipt({
         ok: true,
         tool: "create_todo",
+        data: written,
+      });
+    },
+
+    createCalendarEvent: async (input) => {
+      const written = insertMockCalendarEvent(input);
+      return createToolReceipt({
+        ok: true,
+        tool: "create_calendar_event",
         data: written,
       });
     },

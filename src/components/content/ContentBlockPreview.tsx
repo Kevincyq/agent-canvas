@@ -57,7 +57,15 @@ export function ContentBlockPreview({ block }: ContentBlockPreviewProps) {
       return <GraphView block={block} />;
     case "media":
       if (block.sourceFormat === "svg") {
-        return svgUrl ? <img className="typed-media-preview" src={svgUrl} alt={block.alt} /> : <p className="content-block-error">SVG 无法渲染。</p>;
+        if (!svgUrl) {
+          return (
+            <p className="content-block-error">
+              插图无法渲染：模型返回的 SVG 无效、被截断，或不满足安全过滤（例如含 style / 外链 /
+              非法标签）。当前产品没有真实配图生成能力，请以正文内容为准。
+            </p>
+          );
+        }
+        return <img className="typed-media-preview" src={svgUrl} alt={block.alt} />;
       }
       return <img className="typed-media-preview" src={block.source} alt={block.alt} />;
   }

@@ -45,7 +45,7 @@ export function createConversation(
     id: randomUUID(),
     userId: input.userId ?? "local-user",
     projectId: input.projectId ?? null,
-    title: input.title ?? "New chat",
+    title: input.title ?? "New task",
     status: "ready",
     currentStep: null,
     sessionId: randomUUID(),

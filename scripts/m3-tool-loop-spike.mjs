@@ -26,7 +26,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 
 const results = [];
-const SEED_PROJECT_ID = "proj_launch_prep_001";
+const SEED_PROJECT_ID = "proj_business_001";
 const SEED_MEETING_ID = "meeting_product_review_001";
 
 function record(name, ok, detail) {

@@ -74,20 +74,112 @@ export function listProjectSources(projectId: string): ProjectSourceRecord[] {
   }));
 }
 
-export function searchProjectSources(projectId: string, query: string, limit = 5) {
-  const sources = listProjectSources(projectId);
+export function listAllProjectSources(): ProjectSourceRecord[] {
+  const rows = getDb()
+    .prepare(`SELECT * FROM project_sources ORDER BY created_at ASC`)
+    .all() as SourceRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    sourceType: row.source_type,
+    content: row.content,
+    createdAt: row.created_at,
+  }));
+}
+
+export function upsertProjectSource(input: {
+  id: string;
+  projectId: string;
+  title: string;
+  sourceType: string;
+  content: string;
+}): ProjectSourceRecord {
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO project_sources (
+        id, project_id, title, source_type, content, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        title = excluded.title,
+        source_type = excluded.source_type,
+        content = excluded.content`,
+    )
+    .run(
+      input.id,
+      input.projectId,
+      input.title,
+      input.sourceType,
+      input.content,
+      now,
+    );
+  return {
+    ...input,
+    createdAt: now,
+  };
+}
+
+export function createProject(input: {
+  name: string;
+  instructions?: string;
+  userId?: string;
+  id?: string;
+}): ProjectRecord {
+  const now = new Date().toISOString();
+  const record: ProjectRecord = {
+    id: input.id ?? `proj_${randomUUID().slice(0, 8)}`,
+    userId: input.userId ?? "local-user",
+    name: input.name.trim(),
+    instructions:
+      input.instructions?.trim() ||
+      `你在协助项目「${input.name.trim()}」。优先引用该项目 Sources，回答要可验证。`,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  getDb()
+    .prepare(
+      `INSERT INTO projects (id, user_id, name, instructions, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      record.id,
+      record.userId,
+      record.name,
+      record.instructions,
+      record.createdAt,
+      record.updatedAt,
+    );
+
+  return record;
+}
+
+export function searchProjectSources(projectId: string | null | undefined, query: string, limit = 5) {
+  const sources = projectId ? listProjectSources(projectId) : listAllProjectSources();
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
     return sources.slice(0, limit);
   }
 
+  const wordTokens = normalized.split(/\s+/).filter(Boolean);
+  const cjk = normalized.replace(/[^\p{Script=Han}]/gu, "");
+  const cjkTokens =
+    cjk.length >= 2
+      ? Array.from({ length: cjk.length - 1 }, (_, index) => cjk.slice(index, index + 2))
+      : cjk
+        ? [cjk]
+        : [];
+  const tokens = [...new Set([...wordTokens, ...cjkTokens])];
+
   return sources
     .map((source) => {
       const haystack = `${source.title}\n${source.content}`.toLowerCase();
-      const score = normalized
-        .split(/\s+/)
-        .filter(Boolean)
-        .reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0);
+      const score =
+        (haystack.includes(normalized) ? 4 : 0) +
+        tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0);
       return { source, score };
     })
     .filter((item) => item.score > 0)

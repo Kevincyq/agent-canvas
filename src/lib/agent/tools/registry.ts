@@ -1,4 +1,5 @@
 import {
+  createCalendarEventTool,
   createTodoTool,
   getCurrentContextTool,
   getMeetingContextTool,
@@ -17,6 +18,7 @@ export function createAskAiTools() {
     getMeetingContextTool,
     saveArtifactToProjectTool,
     createTodoTool,
+    createCalendarEventTool,
   ];
 }
 
@@ -31,4 +33,5 @@ export const ASK_AI_READ_TOOL_NAMES = [
 export const ASK_AI_WRITE_TOOL_NAMES = [
   "save_artifact_to_project",
   "create_todo",
+  "create_calendar_event",
 ] as const;

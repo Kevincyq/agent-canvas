@@ -11,18 +11,26 @@ type EvidenceListProps = {
 };
 
 export function EvidenceList({ evidence = [] }: EvidenceListProps) {
-  if (evidence.length === 0) {
+  // Citations / sources only — tool receipts are not shown in the answer chrome.
+  const items = evidence.filter((item) => !item.source.startsWith("tool_receipt:"));
+
+  if (items.length === 0) {
     return null;
   }
 
   return (
     <div className="evidence-list" aria-label="来源与证据">
-      <span className="evidence-list-label">Evidence</span>
+      <span className="evidence-list-label">来源</span>
       <ul>
-        {evidence.map((item) => (
-          <li key={item.id} className="evidence-chip" title={item.source}>
-            <strong>{item.label}</strong>
-            <span>{item.source}</span>
+        {items.map((item, index) => (
+          <li key={`${item.id}:${item.source}:${index}`} className="evidence-chip">
+            {/^https?:\/\//i.test(item.source) ? (
+              <a href={item.source} target="_blank" rel="noreferrer" title={item.source}>
+                {item.label}
+              </a>
+            ) : (
+              <span title={item.source}>{item.label}</span>
+            )}
           </li>
         ))}
       </ul>

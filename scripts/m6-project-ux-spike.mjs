@@ -106,7 +106,7 @@ function main() {
   migrate(db);
 
   const now = new Date().toISOString();
-  const projectId = "proj_launch_prep_001";
+  const projectId = "proj_business_001";
   const conversationId = randomUUID();
   const requestId = randomUUID();
   const artifactId = randomUUID();

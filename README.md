@@ -39,6 +39,9 @@ src/types/agent.ts                  前后端共享协议
 TURING_API_BASE=https://live-turing.cn.llm.tcljd.com/api/v1
 TURING_API_KEY=
 TURING_MODEL=turing/gpt-5.5
+TAVILY_API_KEY=
+WEB_SEARCH_TIMEOUT_MS=15000
+WEB_SEARCH_MAX_RESULTS=5
 AZURE_STT_KEY=
 AZURE_STT_REGION=eastasia
 ASR_LANGUAGE_CODE=zh
@@ -48,7 +51,7 @@ MCP_AUTH_TOKEN=
 PORTAL_FRAME_ANCESTOR_ORIGIN=https://ai.eaglelab.tcl.com https://ai.tcl.com
 ```
 
-`TURING_API_KEY` 未配置时，`/api/agent` 使用本地 fallback：仍可打开画布并验证 FluxInk MCP 识别，但不能完成云端 AskAI 问答。
+`TURING_API_KEY` 未配置时，AskAI 只能使用本地 fallback，不能完成真实 AI 问答。`TAVILY_API_KEY` 是真实 Web Search 的服务端凭据；未配置时搜索工具会明确失败，不会回退到 Mock 搜索结果。
 云端实时 ASR 使用 Azure Speech Services（`AZURE_STT_KEY` + `AZURE_STT_REGION`）。服务端 `POST /api/asr/realtime/session` 签发短时 STS token，浏览器通过 Azure Speech SDK 直连麦克风做连续识别。
 
 ## API
