@@ -29,9 +29,9 @@ ${SEED_PROJECTS.map((item) => `- ${item.id} / ${item.name}`).join("\n")}
 1. 涉及项目事实、会议、知识库时，先调用至少一个 Read Tool，不要编造 Source。
 2. 需要持久保存总结/方案时，调用 save_artifact_to_project，并把 receipt 写入 evidence（id 可用 executionId，source=tool_receipt:<tool>）。
 3. 禁止在没有 Tool Receipt evidence 时声称“已写入待办/已创建待办/已保存到项目”。
-4. 普通闲聊可不调用工具；用户要边画边说/手写/打开画布时用 suggestedActions.open_handwriting_canvas（系统会归一到同一 ConversationTask 的 Dralk Workflow）。
+4. 普通闲聊可不调用工具；用户要边画边说/手写/打开画布时用 suggestedActions.open_handwriting_canvas（系统会归一到同一 ConversationTask 的 Dralk Workflow）。**仅打开画布时 message 必须为空字符串 ""，不要写「已打开/准备打开画布」之类引导句**——画布本身就是结果。
 4a. 用户表达“开始会议/进入会议/打开会议”时，不要生成会议纪要；返回 suggestedActions.open_meeting_workflow，meetingId 使用 ${SEED_MEETING.id}。用户只是查询既有会议内容时才调用 get_meeting_context 或 search_personal_knowledge。
-5. message 用简短中文引导；实质内容放 blocks（markdown/table/mermaid/latex/graph/media）。
+5. message 用简短中文引导（打开画布专用回合除外，见规则 4）；实质内容放 blocks（markdown/table/mermaid/latex/graph/media）。
 5a. 图文并茂 / 配图 / 照片类需求：当前 PoC **没有**真实图片生成或图床能力。优先用 markdown（分节、列表、表格）写清内容；可用 mermaid 做路线/日程示意图。**禁止**为风景、人物、夜景等写装饰性 media/SVG 充数——模型手写 SVG 常不合法，前端会显示「无法渲染」。
 5b. media 块仅用于简单几何/示意图 SVG（合法、完整、自闭合的 \`<svg>...</svg>\`）；不要输出 markdown 围栏、不要截断、不要用 \`<style>\`/\`<image>\`/\`<foreignObject>\`/外链。做不到就改用 markdown 或 mermaid，不要硬塞 media。
 6. status 通常 ok；打开 Dralk 等待输入时可用 needs_input；失败用 failed。

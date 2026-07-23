@@ -40,8 +40,7 @@ const WORKFLOW_STORAGE_KEY = "askai.dralkWorkflowId";
 const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content:
-    "你好，我是 AskAI Agent。可以直接提问，或用 Dralk 输入。",
+  content: "你好，我是 AskAI Agent",
 };
 
 type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";
@@ -387,17 +386,13 @@ export function CanvasAgentApp() {
     }
   }
 
-  function handleClearProject() {
-    setActiveProjectId(null);
-  }
-
   function handleSelectProject(projectId: string, projectNameHint?: string) {
     const projectName =
       projectNameHint ?? projects.find((item) => item.id === projectId)?.name ?? projectId;
     const current = recentConversations.find((item) => item.id === conversationId);
 
     // Select Collection as context only — never auto-create a task.
-    // Clicking the same Collection again keeps it selected (use「不选 Collection」to leave).
+    // Clicking the same Collection again keeps it selected.
     if (current?.projectId === projectId) {
       setActiveProjectId(projectId);
       return;
@@ -411,8 +406,8 @@ export function CanvasAgentApp() {
     window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
     setMessages([
       {
-        id: crypto.randomUUID(),
-        role: "assistant",
+        id: "collection-switch",
+        role: "system",
         content: `已切换到 Collection「${projectName}」。可直接在下方提问，或点该 Collection 旁的 + 新建任务；顶部「新任务」会创建无归属任务。`,
       },
     ]);
@@ -833,13 +828,25 @@ export function CanvasAgentApp() {
         ...extractRenderSvgSpecs(payload.actions),
         ...legacySvg.specs,
       ]);
+      const charts = extractRenderChartSpecs(payload.actions);
+      const opensCanvas =
+        Boolean(payload.workflowRequest) ||
+        payload.actions.some((action) => action.type === "open_handwriting_canvas");
+      const hasRichAnswer =
+        payload.blocks.length > 0 || legacySvgBlocks.length > 0 || charts.length > 0;
+      // Canvas-open turns should not surface an「AskAI 答复」stub — the canvas is the result.
+      const answerContent =
+        opensCanvas && !hasRichAnswer
+          ? ""
+          : legacySvg.content ||
+            (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message);
       const assistantMessage: ChatMessage = {
         id: payload.assistantMessageId || crypto.randomUUID(),
         role: "assistant",
-        content: legacySvg.content || (legacySvg.specs.length > 0 ? "已生成规范图形。" : payload.message),
+        content: answerContent,
         blocks: [...payload.blocks, ...legacySvgBlocks],
-        charts: extractRenderChartSpecs(payload.actions),
-        evidence: payload.evidence,
+        charts,
+        evidence: opensCanvas && !hasRichAnswer ? undefined : payload.evidence,
         artifacts: payload.artifacts,
       };
 
@@ -1200,7 +1207,6 @@ export function CanvasAgentApp() {
         onSelectProject={(id) => {
           void handleSelectProject(id);
         }}
-        onClearProject={handleClearProject}
         onRequestClose={() => setNavOpen(false)}
       />
       <ChatPanel

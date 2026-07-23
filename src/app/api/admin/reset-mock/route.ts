@@ -16,7 +16,7 @@ export async function POST() {
     resetMockData(db);
     return NextResponse.json({
       ok: true,
-      message: "Mock data reset. Seeded Business / Life / Technology / Study / Art.",
+      message: "Mock data reset. Seeded collections + 2026-07-22 产品沟通会纪要.",
     });
   } catch (error) {
     closeDb();

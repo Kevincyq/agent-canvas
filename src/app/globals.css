@@ -182,33 +182,6 @@ a {
   opacity: 0.55;
 }
 
-.project-nav-context {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 11px;
-  gap: 6px 10px;
-  line-height: 1.35;
-  margin: 2px 0 0;
-}
-
-.project-nav-context button {
-  background: transparent;
-  border: 0;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 650;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.project-nav-context button:disabled {
-  opacity: 0.5;
-}
-
 .project-nav-section-header {
   align-items: center;
   display: flex;
@@ -518,6 +491,35 @@ a {
   text-transform: uppercase;
 }
 
+.evidence-list-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.evidence-list-toggle .evidence-list-label {
+  margin-bottom: 0;
+}
+
+.evidence-list-chevron {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-0.5px);
+  transition: transform 0.15s ease;
+}
+
+.evidence-list-chevron.is-open {
+  transform: rotate(90deg) translateX(-0.5px);
+}
+
 .evidence-list ul {
   background: rgba(255, 255, 255, 0.42);
   border: 1px solid var(--border);
@@ -781,6 +783,30 @@ a {
   scroll-padding-block: 16px;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+.chat-startup-title {
+  align-self: center;
+  color: var(--ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.15rem, 2.6vw, 1.45rem);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  line-height: 1.45;
+  margin: auto 0;
+  max-width: 22em;
+  padding: 48px 12px 32px;
+  text-align: center;
+}
+
+.chat-context-notice {
+  align-self: stretch;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 8px 0 4px;
+  max-width: 40em;
+  padding: 4px 2px;
 }
 
 .message-canvas-slot {
@@ -2232,6 +2258,18 @@ a {
   padding: 8px 16px 16px;
 }
 
+.answer-document-intro {
+  min-width: 0;
+  padding: 12px 0 4px;
+}
+
+.answer-document-intro + .answer-document-section,
+.answer-document-intro + .answer-document-media {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
 .answer-document-section {
   min-width: 0;
   padding: 12px 0;
@@ -2239,6 +2277,25 @@ a {
 
 .answer-document-section + .answer-document-section {
   border-top: 1px solid var(--border);
+}
+
+.answer-document-section + .answer-document-media,
+.answer-document-media + .answer-document-media {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.answer-document-media {
+  min-width: 0;
+  padding: 8px 0 4px;
+}
+
+.answer-document-media .plot-card,
+.answer-document-media .svg-diagram-card {
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  margin: 0;
 }
 
 .answer-document-section .message-markdown {

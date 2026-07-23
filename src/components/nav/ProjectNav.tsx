@@ -18,7 +18,6 @@ type ProjectNavProps = {
   onNewProject: () => void;
   onSelectConversation: (conversationId: string) => void;
   onSelectProject: (projectId: string) => void;
-  onClearProject: () => void;
   onRequestClose?: () => void;
 };
 
@@ -156,7 +155,6 @@ export function ProjectNav({
   onNewProject,
   onSelectConversation,
   onSelectProject,
-  onClearProject,
   onRequestClose,
 }: ProjectNavProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -179,8 +177,6 @@ export function ProjectNav({
     }
     return { map, unassigned };
   }, [projects, recent]);
-
-  const activeCollection = projects.find((item) => item.id === activeProjectId) ?? null;
 
   function toggleCollapsed(projectId: string) {
     setCollapsed((current) => ({
@@ -230,18 +226,6 @@ export function ProjectNav({
           </span>
           新任务
         </button>
-        <p className="project-nav-context">
-          {activeCollection ? (
-            <>
-              <span>当前 Collection · {activeCollection.name}（下方提问会归属此处）</span>
-              <button type="button" disabled={busy} onClick={onClearProject}>
-                不选 Collection
-              </button>
-            </>
-          ) : (
-            <span>未选 Collection · 顶部「新任务」进入下方任务列表</span>
-          )}
-        </p>
       </div>
 
       <section className="project-nav-section">

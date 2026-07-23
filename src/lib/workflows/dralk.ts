@@ -156,22 +156,16 @@ export function startDralkWorkflow(input: StartDralkWorkflowRequest): {
   let userMessageId = "";
   let assistantMessageId = "";
 
-  // Button entry must appear in the chat timeline. Agent-intent entry already has
-  // the assistant turn that requested the canvas — avoid duplicate messages.
+  // Button entry: record a user timeline marker and open the canvas under it.
+  // Do not create an assistant「AskAI 答复」stub — the canvas is the result.
   if (input.origin === "user_button") {
     const userMessage = conversationTaskStore.appendMessage({
       conversationId: conversation.id,
       role: "user",
       content: "打开 Dralk 手写输入",
     });
-    const assistantMessage = conversationTaskStore.appendMessage({
-      conversationId: conversation.id,
-      role: "assistant",
-      content:
-        "已打开 Dralk 手写画布。写完后点发送到输入框，补充说明后再发给 AskAI；也可随时结束 Dralk。",
-    });
     userMessageId = userMessage.id;
-    assistantMessageId = assistantMessage.id;
+    assistantMessageId = userMessage.id;
 
     if (
       conversation.title === "New chat" ||

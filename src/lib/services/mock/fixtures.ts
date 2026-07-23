@@ -4,7 +4,7 @@
  */
 
 export const SEED_USER_ID = "local-user";
-export const SEED_VERSION = "2026-07-20-collections-v1";
+export const SEED_VERSION = "2026-07-23-product-sync-v1";
 
 export const SEED_PROJECTS = [
   {
@@ -60,8 +60,68 @@ export const SEED_COLLECTION_IDS: readonly string[] = SEED_PROJECTS.map(
   (project) => project.id,
 );
 
+const PRODUCT_SYNC_MINUTES = `# 产品沟通会 · 会议纪要
+
+- 会议名称：产品沟通会
+- 时间：2026年7月22日 14:00–15:30（UTC+8）
+- 形式：线上同步
+- 参会：产品经理 A、设计 C、研发 D、市场 B、解决方案 E
+- 记录人：产品经理 A
+
+## 讨论议题
+
+1. AskAI 平板 Demo 范围与验收标准（Dralk、通用问答、Web Search 必须真实闭环）
+2. Collection / 任务导航信息架构是否满足演示叙事
+3. 知识库检索体验：用户能否从对话框查到会议纪要与待办
+4. 下周客户演示脚本与物料分工
+5. 风险：FluxInk MCP 可用性、联网搜索凭证、预发环境稳定性
+
+## 会议结论
+
+- AskAI 是演示主体；Meeting / 日历写入可继续用稳定 Mock，但知识库内必须有可检索的真实感纪要。
+- 平板竖屏：侧栏 Collection + 任务；主区对话；Composer 保留 Dralk 入口。
+- 打开画布时不要再套一层「AskAI 答复」空壳，画布本身即结果。
+- 7 月 29 日前完成客户演示彩排；演示脚本需覆盖「查会议纪要 / 查待办 / 打开 Dralk / 联网天气」四条路径。
+
+## 待办事项
+
+1. 【产品经理 A】输出《AskAI 客户演示脚本 v1》，截止日期 2026-07-25
+2. 【研发 D】验收 Web Search 真实链路与失败态文案，截止日期 2026-07-26
+3. 【设计 C】核对 Collection / 任务侧栏与首屏启动标题，截止日期 2026-07-24
+4. 【市场 B】整理三条 Demo 卖点与竞品对比一页纸，截止日期 2026-07-27
+5. 【解决方案 E】准备客户现场问题清单（含「产品沟通会待办有哪些」），截止日期 2026-07-28
+
+## 下次同步
+
+- 时间：2026年7月29日 11:00
+- 议题：彩排问题复盘与演示顺序最终确认
+`;
+
+const PRODUCT_SYNC_TRANSCRIPT = [
+  "产品经理 A：今天是 2026 年 7 月 22 日产品沟通会，先对齐 AskAI 平板 Demo 范围。",
+  "研发 D：Dralk、通用问答、Web Search 必须真实；Meeting 和日历可以 Mock，但知识库要能搜到今天的纪要和待办。",
+  "设计 C：首屏不要「AskAI 答复」空壳，启动标题即可；打开画布也不要再出答复卡。",
+  "市场 B：演示脚本要能回答「产品沟通会讨论了什么、待办有哪些」。",
+  "解决方案 E：我会按待办准备客户现场问题清单，方便从对话框直接追问。",
+  "产品经理 A：结论与待办会后写入 Business 知识库，便于 AskAI 检索。",
+].join("\n");
+
 export const SEED_SOURCES = [
   // Business
+  {
+    id: "src_biz_product_sync_20260722_minutes",
+    projectId: "proj_business_001",
+    title: "2026-07-22 产品沟通会会议纪要",
+    sourceType: "meeting_minutes",
+    content: PRODUCT_SYNC_MINUTES,
+  },
+  {
+    id: "src_biz_product_sync_20260722_transcript",
+    projectId: "proj_business_001",
+    title: "2026-07-22 产品沟通会转写摘要",
+    sourceType: "meeting_transcript",
+    content: PRODUCT_SYNC_TRANSCRIPT,
+  },
   {
     id: "src_biz_kickoff_001",
     projectId: "proj_business_001",
@@ -199,35 +259,55 @@ export const SEED_SOURCES = [
 export const SEED_MEETING = {
   id: "meeting_product_review_001",
   projectId: "proj_business_001",
-  title: "下午产品评审会",
-  startsAt: "2026-07-20T14:00:00+08:00",
-  endsAt: "2026-07-20T15:00:00+08:00",
-  participants: ["产品经理 A", "设计 C", "研发 D", "市场 B"],
-  agenda: ["方案风险回顾", "评审修改项确认", "行动项拆分"],
-  historySummary: "上次评审要求补齐竞品对比和演示脚本，并明确待办责任人。",
+  title: "产品沟通会（2026-07-22）",
+  startsAt: "2026-07-22T14:00:00+08:00",
+  endsAt: "2026-07-22T15:30:00+08:00",
+  participants: ["产品经理 A", "设计 C", "研发 D", "市场 B", "解决方案 E"],
+  agenda: [
+    "AskAI 平板 Demo 范围与验收标准",
+    "Collection / 任务导航信息架构",
+    "知识库会议纪要与待办检索体验",
+    "客户演示脚本与物料分工",
+    "风险：MCP / 联网搜索 / 预发稳定性",
+  ],
+  historySummary:
+    "2026年7月22日产品沟通会：确认 AskAI 为演示主体；知识库需可检索纪要与待办；7月29日彩排前完成演示脚本与验收。",
 } as const;
 
 export const SEED_MEETING_COMPLETION = {
-  transcript: [
-    "产品经理 A：今天确认 AskAI 平板 Demo 的范围，Dralk、通用问答和 Web Search 必须走真实链路。",
-    "研发 D：Meeting、知识库写入和 Tablet 日历可以使用稳定 Mock，重点展示 AskAI 的编排能力。",
-    "设计 C：平板竖屏采用全宽对话，项目列表使用左侧抽屉。",
-    "市场 B：下周演示前需要准备一份完整 Demo 脚本和验收清单。",
-  ].join("\n"),
+  transcript: PRODUCT_SYNC_TRANSCRIPT,
   summary:
-    "会议确认 AskAI 是演示主体：Dralk、AI 问答、Web Search 真实闭环；Meeting、知识入库、日历写入使用 Mock。平板采用竖屏抽屉布局，并在演示前完成 Demo 脚本。",
+    "2026-07-22 产品沟通会确认：AskAI Demo 以真实 Dralk / 问答 / Web Search 为主；知识库写入可检索的会议纪要与待办；打开画布不再套空答复卡；7月29日前完成彩排。",
   actionItems: [
     {
       id: "meeting_action_demo_script",
-      title: "准备 AskAI 完整 Demo 脚本",
+      title: "输出《AskAI 客户演示脚本 v1》",
       owner: "产品经理 A",
-      dueAt: "2026-07-27T10:00:00+08:00",
+      dueAt: "2026-07-25T18:00:00+08:00",
     },
     {
-      id: "meeting_action_acceptance",
-      title: "完成真实 Web Search 验收清单",
+      id: "meeting_action_web_search_qa",
+      title: "验收 Web Search 真实链路与失败态文案",
       owner: "研发 D",
-      dueAt: "2026-07-27T15:00:00+08:00",
+      dueAt: "2026-07-26T18:00:00+08:00",
+    },
+    {
+      id: "meeting_action_nav_ui",
+      title: "核对 Collection / 任务侧栏与首屏启动标题",
+      owner: "设计 C",
+      dueAt: "2026-07-24T18:00:00+08:00",
+    },
+    {
+      id: "meeting_action_market_onepager",
+      title: "整理三条 Demo 卖点与竞品对比一页纸",
+      owner: "市场 B",
+      dueAt: "2026-07-27T18:00:00+08:00",
+    },
+    {
+      id: "meeting_action_customer_faq",
+      title: "准备客户现场问题清单",
+      owner: "解决方案 E",
+      dueAt: "2026-07-28T18:00:00+08:00",
     },
   ],
 } as const;
@@ -235,18 +315,18 @@ export const SEED_MEETING_COMPLETION = {
 export const SEED_ACTION_CANDIDATES = [
   {
     id: "action_001",
-    title: "提交产品评审修改稿",
-    dueAt: "2026-07-22T18:00:00+08:00",
+    title: "输出《AskAI 客户演示脚本 v1》",
+    dueAt: "2026-07-25T18:00:00+08:00",
   },
   {
     id: "action_002",
-    title: "输出演示脚本初稿",
-    dueAt: "2026-07-23T18:00:00+08:00",
+    title: "验收 Web Search 真实链路与失败态文案",
+    dueAt: "2026-07-26T18:00:00+08:00",
   },
   {
     id: "action_003",
-    title: "整理三条线下卖点",
-    dueAt: "2026-07-24T18:00:00+08:00",
+    title: "整理三条 Demo 卖点与竞品对比一页纸",
+    dueAt: "2026-07-27T18:00:00+08:00",
   },
 ] as const;
 

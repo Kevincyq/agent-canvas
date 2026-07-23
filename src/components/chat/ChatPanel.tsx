@@ -9,8 +9,6 @@ import { AssistantMessageActions } from "@/components/chat/AssistantMessageActio
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { EvidenceList } from "@/components/chat/EvidenceList";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
-import { PlotCard } from "@/components/chart/PlotCard";
-import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
 import { ContentBlockCard } from "@/components/content/ContentBlockCard";
 import { UnifiedDocumentEditor } from "@/components/editor/UnifiedDocumentEditor";
 import { VoiceAttachmentCard } from "@/components/voice/VoiceAttachmentCard";
@@ -60,6 +58,26 @@ function precedingUserPrompt(messages: ChatMessage[], assistantMessageId: string
   }
 
   return null;
+}
+
+function hasRichAnswerBody(message: ChatMessage): boolean {
+  return (
+    (message.blocks?.length ?? 0) > 0 ||
+    (message.charts?.length ?? 0) > 0 ||
+    (message.svgs?.length ?? 0) > 0
+  );
+}
+
+/** Canvas-open turns must not look like a separate「AskAI 答复」. */
+function isCanvasOpenStub(message: ChatMessage): boolean {
+  if (message.role !== "assistant" || hasRichAnswerBody(message)) {
+    return false;
+  }
+  const text = message.content.trim();
+  if (!text) {
+    return true;
+  }
+  return /手写画布|Dralk 手写|准备打开|已打开 Dralk|打开手写/.test(text);
 }
 
 export function ChatPanel({
@@ -176,7 +194,11 @@ export function ChatPanel({
       <div ref={messageListRef} className="message-list">
         {messages.map((message) => (
           <Fragment key={message.id}>
-            {message.document ? (
+            {message.id === "welcome" ? (
+              <p className="chat-startup-title">{message.content}</p>
+            ) : message.id === "collection-switch" ? (
+              <p className="chat-context-notice">{message.content}</p>
+            ) : message.document ? (
               <article className="saved-document-banner" aria-label={`新文档：${message.document.title}`}>
                 <span>新文档</span>
                 <div>
@@ -186,6 +208,45 @@ export function ChatPanel({
               </article>
             ) : message.role === "user" ? (
               <UserMessageBubble content={message.content} attachments={message.attachments} />
+            ) : message.role === "assistant" ? (
+              isCanvasOpenStub(message) ? null : (
+                <>
+                  {(message.content.trim() || hasRichAnswerBody(message)) && (
+                    <div className="message-content-block-slot">
+                      <ContentBlockCard
+                        content={message.content}
+                        blocks={message.blocks}
+                        charts={message.charts}
+                        svgs={message.svgs}
+                        onEdit={() => setEditingMessageId(message.id)}
+                      />
+                    </div>
+                  )}
+                  <EvidenceList evidence={message.evidence} />
+                  <AssistantMessageActions
+                    messageId={message.id}
+                    content={message.content}
+                    blocks={message.blocks}
+                    busy={busy}
+                    onRegenerate={() => {
+                      const prompt = precedingUserPrompt(messages, message.id);
+                      if (prompt) {
+                        void onSend(prompt);
+                      }
+                    }}
+                    onSaveAsNote={() => {
+                      const blocks = message.blocks ?? [];
+                      if (blocks.length === 0) {
+                        return;
+                      }
+                      const title =
+                        blocks.find((block) => block.title)?.title?.trim() ||
+                        "AskAI 笔记";
+                      onCreateDocument(message.id, title, blocks);
+                    }}
+                  />
+                </>
+              )
             ) : message.content ? (
               <article className={`message ${message.role}`}>
                 <ChatMessageContent content={message.content} variant={message.role} />
@@ -194,51 +255,6 @@ export function ChatPanel({
             {message.attachments?.map((attachment) => (
               <div key={`${message.id}-${attachment.id}`} className="message-attachment-slot">
                 <VoiceAttachmentCard attachment={attachment} status="sent" compact />
-              </div>
-            ))}
-            {message.blocks && message.blocks.length > 0 ? (
-              <div className="message-content-block-slot">
-                <ContentBlockCard
-                  blocks={message.blocks}
-                  onEdit={() => setEditingMessageId(message.id)}
-                />
-              </div>
-            ) : null}
-            {message.role === "assistant" ? (
-              <>
-                <EvidenceList evidence={message.evidence} />
-                <AssistantMessageActions
-                  messageId={message.id}
-                  content={message.content}
-                  blocks={message.blocks}
-                  busy={busy}
-                  onRegenerate={() => {
-                    const prompt = precedingUserPrompt(messages, message.id);
-                    if (prompt) {
-                      void onSend(prompt);
-                    }
-                  }}
-                  onSaveAsNote={() => {
-                    const blocks = message.blocks ?? [];
-                    if (blocks.length === 0) {
-                      return;
-                    }
-                    const title =
-                      blocks.find((block) => block.title)?.title?.trim() ||
-                      "AskAI 笔记";
-                    onCreateDocument(message.id, title, blocks);
-                  }}
-                />
-              </>
-            ) : null}
-            {message.charts?.map((spec, index) => (
-              <div key={`${message.id}-chart-${index}`} className="message-chart-slot">
-                <PlotCard spec={spec} />
-              </div>
-            ))}
-            {message.svgs?.map((spec, index) => (
-              <div key={`${message.id}-svg-${index}`} className="message-svg-slot">
-                <SvgDiagramCard spec={spec} />
               </div>
             ))}
             {canvasSlot && canvasAfterMessageId === message.id ? (

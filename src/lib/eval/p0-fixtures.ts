@@ -66,7 +66,7 @@ export const P0_EVAL_FIXTURES: EvalFixture[] = [
     id: "eval_case_4_meeting",
     caseId: "case_4",
     title: "Mock Meeting Context",
-    prompt: "请读取下午产品评审会上下文，并生成一份 Meeting Brief。",
+    prompt: "请读取 2026年7月22日产品沟通会上下文，并生成一份 Meeting Brief。",
     expectations: {
       mustCallTools: ["get_meeting_context"],
       mustShowEvidence: true,

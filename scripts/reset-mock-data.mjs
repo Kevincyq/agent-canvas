@@ -22,5 +22,6 @@ for (const suffix of ["", "-wal", "-shm"]) {
 }
 
 console.log("Mock SQLite cleared.");
-console.log("On next server start / API call, seed version collections-v1 will load:");
+console.log("On next server start / API call, seed version product-sync-v1 will load:");
 console.log("  Business / Life / Technology / Study / Art");
+console.log("  + 2026-07-22 产品沟通会纪要（可检索议题与待办）");

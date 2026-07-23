@@ -86,12 +86,12 @@ export const searchWebTool = tool({
 export const getMeetingContextTool = tool({
   name: "get_meeting_context",
   description:
-    "Load meeting details including agenda, participants, and history summary. Use meeting_product_review_001 for the seed product review meeting.",
+    "Load meeting details including agenda, participants, and history summary. Default is the 2026-07-22 product sync meeting (meeting_product_review_001).",
   parameters: z.object({
     meetingId: z
       .string()
       .nullable()
-      .describe("Meeting id. Null selects the default seed product review meeting."),
+      .describe("Meeting id. Null selects the default 2026-07-22 product sync meeting."),
   }),
   strict: true,
   execute: async ({ meetingId }, runContext: Ctx) =>
