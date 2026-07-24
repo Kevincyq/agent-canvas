@@ -50,6 +50,7 @@ export const AgentRunRequestSchema = z.object({
   attachments: z.array(AgentAttachmentSchema).default([]),
   dralkContext: AgentRunDralkContextSchema.optional(),
   userId: z.string().min(1).max(100).optional(),
+  tenantId: z.string().min(1).max(100).optional(),
   projectId: z.string().min(1).nullable().optional(),
 });
 
@@ -65,7 +66,9 @@ export type AgentRunRequest = {
   attachments: z.infer<typeof AgentAttachmentSchema>[];
   dralkContext?: Partial<DralkQueryPayload>;
   userId?: string;
+  tenantId?: string;
   projectId?: string | null;
+  signal?: AbortSignal;
 };
 
 export const AgentRunResponseSchema = z.object({
@@ -117,6 +120,10 @@ export const AgentResumeRequestSchema = z.object({
     )
     .min(1),
   userId: z.string().min(1).max(100).optional(),
+  tenantId: z.string().min(1).max(100).optional(),
 });
 
-export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>;
+export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema> & {
+  tenantId?: string;
+  signal?: AbortSignal;
+};

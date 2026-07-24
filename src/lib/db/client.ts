@@ -13,7 +13,9 @@ let migrationsApplied = false;
 
 export function resolveSqlitePath(explicitPath?: string): string {
   const configured = explicitPath || getOptionalEnv("SQLITE_PATH", DEFAULT_DB_PATH);
-  return isAbsolute(configured) ? configured : join(process.cwd(), configured);
+  return isAbsolute(configured)
+    ? configured
+    : join(/* turbopackIgnore: true */ process.cwd(), configured);
 }
 
 export function getDb(options?: { path?: string; skipMigrate?: boolean }): DatabaseSync {

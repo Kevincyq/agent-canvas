@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { ServiceAdapters } from "@/lib/services/adapters";
 import { createServiceAdapters } from "@/lib/services";
+import {
+  createRuntimeBudgetState,
+  type AgentRuntimeBudgetState,
+} from "@/lib/agent/runtime-budget";
 import { SEED_PROJECT } from "@/lib/services/mock/fixtures";
 
 export type PermissionSnapshot = {
@@ -9,6 +13,9 @@ export type PermissionSnapshot = {
   canWriteTodo: boolean;
   canSaveArtifact: boolean;
   canSearchWeb: boolean;
+  canWriteCalendar: boolean;
+  canStartDralk: boolean;
+  canStartMeeting: boolean;
 };
 
 export type AgentSurface = "ask_ai" | "note" | "reader" | "meeting" | "canvas";
@@ -23,6 +30,7 @@ export type AgentContext = {
   permissions: PermissionSnapshot;
   services: ServiceAdapters;
   requestId: string;
+  runtimeBudget: AgentRuntimeBudgetState;
 };
 
 export type CreateAgentContextInput = {
@@ -35,6 +43,7 @@ export type CreateAgentContextInput = {
   permissions?: Partial<PermissionSnapshot>;
   services?: ServiceAdapters;
   requestId?: string;
+  runtimeBudget?: AgentRuntimeBudgetState;
   /** When true, omit default seed projectId (general chat). */
   allowEmptyProject?: boolean;
 };
@@ -44,6 +53,9 @@ const DEFAULT_PERMISSIONS: PermissionSnapshot = {
   canWriteTodo: true,
   canSaveArtifact: true,
   canSearchWeb: true,
+  canWriteCalendar: true,
+  canStartDralk: true,
+  canStartMeeting: true,
 };
 
 /**
@@ -70,5 +82,6 @@ export function createAgentContext(input: CreateAgentContextInput): AgentContext
     },
     services: input.services ?? createServiceAdapters(),
     requestId: input.requestId ?? randomUUID(),
+    runtimeBudget: input.runtimeBudget ?? createRuntimeBudgetState(),
   };
 }

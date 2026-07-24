@@ -111,6 +111,7 @@ export function startDralkWorkflow(input: StartDralkWorkflowRequest): {
 } {
   const conversation = conversationTaskStore.ensure(input.conversationId, {
     userId: input.userId,
+    tenantId: input.tenantId,
     title: input.origin === "user_button" ? "AskAI · Dralk" : "AskAI",
     originSurface: input.origin === "user_button" ? "dralk" : "askai",
   });

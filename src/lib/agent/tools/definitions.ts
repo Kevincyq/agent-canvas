@@ -3,10 +3,22 @@ import { tool } from "@openai/agents";
 import { z } from "zod";
 
 import type { AgentContext } from "@/lib/agent/context";
+import { getAgentRuntimeLimits } from "@/lib/agent/runtime-budget";
+import {
+  buildToolIdempotencyKey,
+  isToolEnabledForContext,
+  toolNeedsApproval,
+} from "@/lib/agent/tool-policy";
 import { executeLoggedTool } from "@/lib/agent/tools/tool-utils";
-import { createFailedToolReceipt } from "@/types/tool-receipt";
+import { startDralkWorkflow } from "@/lib/workflows/dralk";
+import { startMeetingWorkflow } from "@/lib/workflows/meeting";
+import { createFailedToolReceipt, createToolReceipt } from "@/types/tool-receipt";
 
 type Ctx = RunContext<AgentContext> | undefined;
+const TOOL_TIMEOUT_OPTIONS = {
+  timeoutMs: getAgentRuntimeLimits().toolTimeoutMs,
+  timeoutBehavior: "error_as_result" as const,
+};
 
 export const getCurrentContextTool = tool({
   name: "get_current_context",
@@ -14,6 +26,8 @@ export const getCurrentContextTool = tool({
     "Read the current Ask AI surface, conversation, selected project, and permission snapshot.",
   parameters: z.object({}),
   strict: true,
+  isEnabled: isToolEnabledForContext("get_current_context"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async (_input, runContext: Ctx) =>
     executeLoggedTool("get_current_context", {}, runContext, (context) =>
       context.services.getCurrentContext(context),
@@ -32,9 +46,11 @@ export const getProjectContextTool = tool({
       ),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("get_project_context"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ projectId }, runContext: Ctx) =>
     executeLoggedTool("get_project_context", { projectId }, runContext, (context) =>
-      context.services.getProjectContext(projectId),
+      context.services.getProjectContext(context, projectId),
     ),
 });
 
@@ -50,12 +66,14 @@ export const searchPersonalKnowledgeTool = tool({
       .describe("Optional project id. Null searches all collections."),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("search_personal_knowledge"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ query, projectId }, runContext: Ctx) =>
     executeLoggedTool(
       "search_personal_knowledge",
       { query, projectId },
       runContext,
-      (context) => context.services.searchPersonalKnowledge(query, projectId),
+      (context) => context.services.searchPersonalKnowledge(context, query, projectId),
     ),
 });
 
@@ -67,6 +85,8 @@ export const searchWebTool = tool({
     query: z.string().describe("Web search query."),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("search_web"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ query }, runContext: Ctx) =>
     executeLoggedTool("search_web", { query }, runContext, (context) => {
       if (!context.permissions.canSearchWeb) {
@@ -94,9 +114,89 @@ export const getMeetingContextTool = tool({
       .describe("Meeting id. Null selects the default 2026-07-22 product sync meeting."),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("get_meeting_context"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ meetingId }, runContext: Ctx) =>
     executeLoggedTool("get_meeting_context", { meetingId }, runContext, (context) =>
       context.services.getMeetingContext(meetingId ?? undefined),
+    ),
+});
+
+export const startDralkWorkflowTool = tool({
+  name: "start_dralk_workflow",
+  description:
+    "Start or reuse the persisted Dralk handwriting workflow in this same conversation. Use this instead of merely suggesting that the UI open a canvas.",
+  parameters: z.object({
+    prompt: z.string().describe("Short instruction shown with the handwriting canvas."),
+    mode: z.enum(["general", "structure"]).nullable(),
+    language: z.string().nullable(),
+    forceNew: z.boolean().nullable(),
+  }),
+  strict: true,
+  isEnabled: isToolEnabledForContext("start_dralk_workflow"),
+  ...TOOL_TIMEOUT_OPTIONS,
+  execute: async ({ prompt, mode, language, forceNew }, runContext: Ctx) =>
+    executeLoggedTool(
+      "start_dralk_workflow",
+      { prompt, mode, language, forceNew },
+      runContext,
+      async (context) => {
+        const started = startDralkWorkflow({
+          conversationId: context.conversationId,
+          origin: "agent_intent",
+          prompt,
+          mode: mode ?? "general",
+          language: language ?? "",
+          forceNew: forceNew ?? false,
+          userId: context.userId,
+          tenantId: context.tenantId,
+        });
+        return createToolReceipt({
+          ok: true,
+          tool: "start_dralk_workflow",
+          data: {
+            workflowId: started.workflow.id,
+            status: started.workflow.status,
+            workflowRequest: started.workflowRequest,
+          },
+        });
+      },
+    ),
+});
+
+export const startMeetingWorkflowTool = tool({
+  name: "start_meeting_workflow",
+  description:
+    "Start or reuse the persisted Meeting workflow in this same conversation. Use only when the user asks to start or enter a meeting, not when reading existing meeting notes.",
+  parameters: z.object({
+    meetingId: z.string().nullable(),
+  }),
+  strict: true,
+  isEnabled: isToolEnabledForContext("start_meeting_workflow"),
+  ...TOOL_TIMEOUT_OPTIONS,
+  execute: async ({ meetingId }, runContext: Ctx) =>
+    executeLoggedTool(
+      "start_meeting_workflow",
+      { meetingId },
+      runContext,
+      async (context) => {
+        const started = startMeetingWorkflow({
+          conversationId: context.conversationId,
+          origin: "agent_intent",
+          meetingId: meetingId ?? undefined,
+          userId: context.userId,
+          tenantId: context.tenantId,
+        });
+        return createToolReceipt({
+          ok: true,
+          tool: "start_meeting_workflow",
+          data: {
+            workflowId: started.workflow.id,
+            meetingId: started.workflow.payload.meetingId,
+            status: started.workflow.status,
+          },
+        });
+      },
     ),
 });
 
@@ -111,6 +211,8 @@ export const saveArtifactToProjectTool = tool({
     blocksJson: z.string().describe("JSON string of typed blocks array to persist."),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("save_artifact_to_project"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ projectId, title, artifactType, blocksJson }, runContext: Ctx) =>
     executeLoggedTool(
       "save_artifact_to_project",
@@ -139,6 +241,11 @@ export const saveArtifactToProjectTool = tool({
           title,
           artifactType: artifactType ?? "typed_blocks",
           blocks,
+          idempotencyKey: buildToolIdempotencyKey(
+            context,
+            "save_artifact_to_project",
+            { projectId, title, artifactType: artifactType ?? "typed_blocks", blocks },
+          ),
         });
       },
     ),
@@ -155,7 +262,9 @@ export const createTodoTool = tool({
     idempotencyKey: z.string().nullable(),
   }),
   strict: true,
-  needsApproval: true,
+  isEnabled: isToolEnabledForContext("create_todo"),
+  needsApproval: toolNeedsApproval("create_todo"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async ({ title, dueAt, projectId, idempotencyKey }, runContext: Ctx) =>
     executeLoggedTool(
       "create_todo",
@@ -166,7 +275,13 @@ export const createTodoTool = tool({
           title,
           dueAt: dueAt ?? undefined,
           projectId: projectId ?? context.projectId,
-          idempotencyKey: idempotencyKey ?? undefined,
+          idempotencyKey:
+            idempotencyKey ??
+            buildToolIdempotencyKey(context, "create_todo", {
+              title,
+              dueAt: dueAt ?? null,
+              projectId: projectId ?? context.projectId ?? null,
+            }),
         }),
     ),
 });
@@ -184,6 +299,9 @@ export const createCalendarEventTool = tool({
     idempotencyKey: z.string().nullable(),
   }),
   strict: true,
+  isEnabled: isToolEnabledForContext("create_calendar_event"),
+  needsApproval: toolNeedsApproval("create_calendar_event"),
+  ...TOOL_TIMEOUT_OPTIONS,
   execute: async (
     { title, startAt, endAt, notes, sourceId, idempotencyKey },
     runContext: Ctx,
@@ -199,7 +317,14 @@ export const createCalendarEventTool = tool({
           endAt,
           notes: notes ?? undefined,
           sourceId: sourceId ?? undefined,
-          idempotencyKey: idempotencyKey ?? undefined,
+          idempotencyKey:
+            idempotencyKey ??
+            buildToolIdempotencyKey(context, "create_calendar_event", {
+              title,
+              startAt,
+              endAt,
+              sourceId: sourceId ?? null,
+            }),
         }),
     ),
 });

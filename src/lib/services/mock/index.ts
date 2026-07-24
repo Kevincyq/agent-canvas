@@ -2,6 +2,7 @@ import {
   getProjectById,
   insertArtifact,
   insertMockTodo,
+  listProjects,
   listProjectSources,
   searchProjectSources,
 } from "@/lib/db/repositories/projects";
@@ -11,6 +12,7 @@ import {
   SEED_ACTION_CANDIDATES,
   SEED_MEETING,
   SEED_PROJECT,
+  SEED_PROJECTS,
   SEED_WEB_RESULTS,
 } from "@/lib/services/mock/fixtures";
 import { createToolReceipt } from "@/types/tool-receipt";
@@ -85,9 +87,14 @@ export function createMockServiceAdapters(): ServiceAdapters {
         },
       }),
 
-    getProjectContext: async (projectId) => {
+    getProjectContext: async (context, projectId) => {
       const project = getProjectById(projectId);
-      if (!project) {
+      const isSeed = SEED_PROJECTS.some((item) => item.id === projectId);
+      if (
+        !project ||
+        (!isSeed &&
+          (project.userId !== context.userId || project.tenantId !== context.tenantId))
+      ) {
         return createToolReceipt<ProjectContextData>({
           ok: false,
           tool: "get_project_context",
@@ -125,8 +132,14 @@ export function createMockServiceAdapters(): ServiceAdapters {
       });
     },
 
-    searchPersonalKnowledge: async (query, projectId) => {
-      const matches = searchProjectSources(projectId || null, query, 5);
+    searchPersonalKnowledge: async (context, query, projectId) => {
+      const accessibleProjects = new Set([
+        ...SEED_PROJECTS.map((item) => item.id),
+        ...listProjects(context.userId, context.tenantId).map((item) => item.id),
+      ]);
+      const matches = searchProjectSources(projectId || null, query, 20)
+        .filter((source) => accessibleProjects.has(source.projectId))
+        .slice(0, 5);
       const hits: KnowledgeHit[] = matches.map((source, index) => ({
         sourceId: source.id,
         title: source.title,
@@ -222,6 +235,7 @@ export function createMockServiceAdapters(): ServiceAdapters {
         artifactType: input.artifactType ?? "typed_blocks",
         blocks: input.blocks,
         evidence: input.evidence,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return createToolReceipt({

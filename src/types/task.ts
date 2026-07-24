@@ -34,6 +34,7 @@ export type ConversationMessageRecord = z.infer<typeof ConversationMessageSchema
 export const ConversationTaskSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
+  tenantId: z.string().min(1),
   projectId: z.string().nullable(),
   title: z.string(),
   status: ConversationStatusSchema,
@@ -51,6 +52,7 @@ export const CreateConversationRequestSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
   originSurface: z.string().min(1).max(100).optional(),
   userId: z.string().min(1).max(100).optional(),
+  tenantId: z.string().min(1).max(100).optional(),
 });
 
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequestSchema>;

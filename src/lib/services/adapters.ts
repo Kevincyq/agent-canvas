@@ -10,6 +10,7 @@ export type ServiceAdapters = {
     context: AgentContext,
   ) => Promise<ToolReceipt<Record<string, unknown>>>;
   searchPersonalKnowledge: (
+    context: AgentContext,
     query: string,
     projectId?: string | null,
   ) => Promise<ToolReceipt<{ hits: unknown[]; projectId?: string | null; query?: string }>>;
@@ -20,6 +21,7 @@ export type ServiceAdapters = {
     meetingId?: string,
   ) => Promise<ToolReceipt<{ meeting: unknown | null }>>;
   getProjectContext: (
+    context: AgentContext,
     projectId: string,
   ) => Promise<
     ToolReceipt<{
@@ -35,6 +37,7 @@ export type ServiceAdapters = {
     blocks: unknown[];
     artifactType?: string;
     evidence?: unknown;
+    idempotencyKey?: string;
   }) => Promise<ToolReceipt<{ artifactId: string; projectId: string }>>;
   createTodo: (input: {
     title: string;

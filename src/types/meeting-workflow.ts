@@ -42,6 +42,7 @@ export const StartMeetingWorkflowRequestSchema = z.object({
   origin: z.enum(["agent_intent", "user_button"]).default("user_button"),
   meetingId: z.string().min(1).optional(),
   userId: z.string().min(1).optional(),
+  tenantId: z.string().min(1).optional(),
 });
 
 export const FinishMeetingWorkflowRequestSchema = z.object({

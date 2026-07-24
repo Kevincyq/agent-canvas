@@ -22,6 +22,7 @@ export function startMeetingWorkflow(input: StartMeetingWorkflowRequest): {
 } {
   const conversation = conversationTaskStore.ensure(input.conversationId, {
     userId: input.userId,
+    tenantId: input.tenantId,
     title: "AskAI · 会议",
     originSurface: "meeting",
   });

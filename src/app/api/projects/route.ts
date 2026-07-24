@@ -49,10 +49,17 @@ function sortCollectionsForNav<T extends { id: string }>(projects: T[]): T[] {
   return ordered;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     getDb();
-    const projects = sortCollectionsForNav(listProjects()).map((project) => {
+    const portal = resolvePortalUserContext({ headers: request.headers });
+    const projects = sortCollectionsForNav(
+      listProjects().filter(
+        (project) =>
+          SEED_COLLECTION_IDS.includes(project.id) ||
+          (project.userId === portal.userId && project.tenantId === portal.tenantId),
+      ),
+    ).map((project) => {
       const sources = listProjectSources(project.id).map((source) => ({
         id: source.id,
         title: source.title,
@@ -88,6 +95,7 @@ export async function POST(request: Request) {
       name: payload.name,
       instructions: payload.instructions,
       userId: portal.userId,
+      tenantId: portal.tenantId,
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {

@@ -13,6 +13,10 @@ import { extractApprovalCallId, riskLevelForTool } from "@/lib/agent/approvals";
 import type { AgentContext } from "@/lib/agent/context";
 import { applyProviderConfig } from "@/lib/agent/provider";
 import {
+  createRunAbortSignal,
+  getAgentRuntimeLimits,
+} from "@/lib/agent/runtime-budget";
+import {
   AskAiStructuredOutputSchema,
   createEmptyStructuredOutput,
   structuredOutputToAgentResponse,
@@ -76,6 +80,7 @@ export type RunnerTurnInput = {
   session: Session;
   prompt: string;
   request: AgentRequest;
+  signal?: AbortSignal;
 };
 
 export type ApprovalCard = {
@@ -264,6 +269,7 @@ async function finalizeResult(
 
 export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnResult> {
   const provider = applyProviderConfig();
+  const limits = getAgentRuntimeLimits();
 
   if (!provider.configured) {
     const { createFallbackResponse } = await import("@/lib/agent/intent");
@@ -289,6 +295,12 @@ export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnRe
       context: input.context,
       session: input.session,
       sessionInputCallback: trimSessionInputForModel,
+      maxTurns: limits.maxTurns,
+      signal: createRunAbortSignal(input.signal, limits.timeoutMs),
+      toolExecution: {
+        maxFunctionToolConcurrency: limits.maxFunctionToolConcurrency,
+        preApprovalInputGuardrails: true,
+      },
     });
 
     return finalizeResult(
@@ -322,8 +334,10 @@ export async function resumeAskAiRun(input: {
   runStateId?: string;
   decisions: ResumeDecision[];
   request: AgentRequest;
+  signal?: AbortSignal;
 }): Promise<RunnerTurnResult> {
   applyProviderConfig();
+  const limits = getAgentRuntimeLimits();
   const runner = getSharedRunner();
   const agent = getAskAiAgent();
 
@@ -379,6 +393,11 @@ export async function resumeAskAiRun(input: {
   const result = await runner.run(agent, state, {
     context: input.context,
     session: input.session,
+    signal: createRunAbortSignal(input.signal, limits.timeoutMs),
+    toolExecution: {
+      maxFunctionToolConcurrency: limits.maxFunctionToolConcurrency,
+      preApprovalInputGuardrails: true,
+    },
   });
 
   return finalizeResult(

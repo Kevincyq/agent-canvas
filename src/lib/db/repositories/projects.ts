@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db/client";
 export type ProjectRecord = {
   id: string;
   userId: string;
+  tenantId: string;
   name: string;
   instructions: string;
   createdAt: string;
@@ -23,6 +24,7 @@ export type ProjectSourceRecord = {
 type ProjectRow = {
   id: string;
   user_id: string;
+  tenant_id: string;
   name: string;
   instructions: string;
   created_at: string;
@@ -48,6 +50,7 @@ export function getProjectById(id: string): ProjectRecord | null {
   return {
     id: row.id,
     userId: row.user_id,
+    tenantId: row.tenant_id,
     name: row.name,
     instructions: row.instructions,
     createdAt: row.created_at,
@@ -126,12 +129,14 @@ export function createProject(input: {
   name: string;
   instructions?: string;
   userId?: string;
+  tenantId?: string;
   id?: string;
 }): ProjectRecord {
   const now = new Date().toISOString();
   const record: ProjectRecord = {
     id: input.id ?? `proj_${randomUUID().slice(0, 8)}`,
     userId: input.userId ?? "local-user",
+    tenantId: input.tenantId ?? "local-tenant",
     name: input.name.trim(),
     instructions:
       input.instructions?.trim() ||
@@ -142,12 +147,13 @@ export function createProject(input: {
 
   getDb()
     .prepare(
-      `INSERT INTO projects (id, user_id, name, instructions, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (id, user_id, tenant_id, name, instructions, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       record.id,
       record.userId,
+      record.tenantId,
       record.name,
       record.instructions,
       record.createdAt,
@@ -195,14 +201,32 @@ export function insertArtifact(input: {
   artifactType: string;
   blocks: unknown[];
   evidence?: unknown;
+  idempotencyKey?: string;
 }): { artifactId: string; projectId: string } {
+  if (input.idempotencyKey) {
+    const existing = getDb()
+      .prepare(
+        "SELECT id, project_id FROM artifacts WHERE idempotency_key = ?",
+      )
+      .get(input.idempotencyKey) as
+      | { id: string; project_id: string | null }
+      | undefined;
+    if (existing) {
+      return {
+        artifactId: existing.id,
+        projectId: existing.project_id ?? input.projectId,
+      };
+    }
+  }
+
   const artifactId = randomUUID();
   const now = new Date().toISOString();
   getDb()
     .prepare(
       `INSERT INTO artifacts (
-        id, conversation_id, project_id, title, artifact_type, blocks_json, evidence_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, conversation_id, project_id, title, artifact_type, blocks_json, evidence_json,
+        idempotency_key, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       artifactId,
@@ -212,6 +236,7 @@ export function insertArtifact(input: {
       input.artifactType,
       JSON.stringify(input.blocks),
       input.evidence ? JSON.stringify(input.evidence) : null,
+      input.idempotencyKey ?? null,
       now,
       now,
     );
@@ -276,20 +301,23 @@ export function getArtifactById(id: string): ArtifactRecord | null {
   return row ? mapArtifact(row) : null;
 }
 
-export function listProjects(userId?: string): ProjectRecord[] {
+export function listProjects(userId?: string, tenantId?: string): ProjectRecord[] {
   const rows = (
-    userId
+    userId && tenantId
       ? getDb()
           .prepare(
-            `SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC`,
+            `SELECT * FROM projects
+             WHERE user_id = ? AND tenant_id = ?
+             ORDER BY updated_at DESC`,
           )
-          .all(userId)
+          .all(userId, tenantId)
       : getDb().prepare(`SELECT * FROM projects ORDER BY updated_at DESC`).all()
   ) as ProjectRow[];
 
   return rows.map((row) => ({
     id: row.id,
     userId: row.user_id,
+    tenantId: row.tenant_id,
     name: row.name,
     instructions: row.instructions,
     createdAt: row.created_at,

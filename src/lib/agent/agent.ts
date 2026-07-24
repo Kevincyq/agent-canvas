@@ -21,7 +21,7 @@ import {
   startDralkFromAgentIntent,
   transitionDralkWorkflow,
 } from "@/lib/workflows/dralk";
-import type { AgentRequest, AgentResponse, ChatMessage } from "@/types/agent";
+import type { AgentAction, AgentRequest, AgentResponse, ChatMessage } from "@/types/agent";
 import type {
   AgentResumeRequest,
   AgentRunRequest,
@@ -167,6 +167,53 @@ function enrichArtifactsFromToolRuns(
   return merged;
 }
 
+function extractWorkflowSignalsFromToolRuns(
+  requestId: string | undefined,
+  fallbackActions: AgentAction[],
+): {
+  workflowRequest?: WorkflowRequest;
+  actions: AgentAction[];
+} {
+  if (!requestId) {
+    return { actions: fallbackActions };
+  }
+
+  let workflowRequest: WorkflowRequest | undefined;
+  let meetingId: string | null | undefined;
+  for (const run of listToolRunsByRequest(requestId)) {
+    if (!run.resultJson || run.status !== "completed") {
+      continue;
+    }
+    try {
+      const receipt = JSON.parse(run.resultJson) as ToolReceipt<{
+        workflowRequest?: WorkflowRequest;
+        meetingId?: string;
+      }>;
+      if (!receipt.ok) {
+        continue;
+      }
+      if (run.toolName === "start_dralk_workflow" && receipt.data?.workflowRequest) {
+        workflowRequest = receipt.data.workflowRequest;
+      }
+      if (run.toolName === "start_meeting_workflow") {
+        meetingId = receipt.data?.meetingId ?? null;
+      }
+    } catch {
+      // Ignore malformed tool output and retain the model action fallback.
+    }
+  }
+
+  const actions = [...fallbackActions];
+  if (
+    meetingId !== undefined &&
+    !actions.some((action) => action.type === "open_meeting_workflow")
+  ) {
+    actions.push({ type: "open_meeting_workflow", meetingId });
+  }
+
+  return { workflowRequest, actions };
+}
+
 function buildRunResponse(input: {
   conversationId: string;
   sessionId: string;
@@ -174,6 +221,7 @@ function buildRunResponse(input: {
   userMessageId: string;
   assistantMessageId: string;
   workflowRequest?: WorkflowRequest;
+  actions?: AgentAction[];
 }): AgentRunResponse {
   if (input.turn.kind === "waiting_for_approval") {
     conversationTaskStore.update(input.conversationId, {
@@ -201,7 +249,7 @@ function buildRunResponse(input: {
         : (updated?.status ?? "ready"),
     message: input.turn.response.message,
     blocks: input.turn.response.blocks,
-    actions: input.turn.response.actions,
+    actions: input.actions ?? input.turn.response.actions,
     userMessageId: input.userMessageId,
     assistantMessageId: input.assistantMessageId,
     outputStatus: input.turn.structured.status,
@@ -217,6 +265,7 @@ function buildRunResponse(input: {
 export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResponse> {
   const conversation = conversationTaskStore.ensure(input.conversationId, {
     userId: input.userId,
+    tenantId: input.tenantId,
     title: titleFromFirstMessage(input.message),
     originSurface: "askai",
     projectId: input.projectId ?? undefined,
@@ -274,6 +323,7 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
   const session = new SqliteSession({ sessionId: conversationFresh.sessionId });
   const context = createAgentContext({
     userId: input.userId ?? conversationFresh.userId,
+    tenantId: input.tenantId ?? conversationFresh.tenantId,
     conversationId: conversationFresh.id,
     projectId: conversationFresh.projectId ?? undefined,
     currentSurface: activeBefore ? "canvas" : "ask_ai",
@@ -291,9 +341,14 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     session,
     prompt: buildCurrentTurnPrompt(agentRequest),
     request: agentRequest,
+    signal: input.signal,
   });
 
-  const charts = extractRenderChartSpecs(turn.response.actions);
+  const workflowSignals = extractWorkflowSignalsFromToolRuns(
+    turn.requestId,
+    turn.response.actions,
+  );
+  const charts = extractRenderChartSpecs(workflowSignals.actions);
   const assistantMessageId = randomUUID();
   const evidence = enrichEvidenceFromToolRuns(turn.structured.evidence, turn.requestId);
   const artifacts = enrichArtifactsFromToolRuns(turn.structured.artifacts, turn.requestId);
@@ -304,17 +359,19 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     role: "assistant",
     content: turn.response.message,
     blocks: turn.response.blocks,
-    actions: turn.response.actions,
+    actions: workflowSignals.actions,
     charts,
     evidence,
     artifacts,
   });
 
-  let workflowRequest: WorkflowRequest | undefined;
+  let workflowRequest = workflowSignals.workflowRequest;
   if (turn.kind === "completed") {
-    const openCanvasAction = turn.response.actions.find(
+    const openCanvasAction = workflowRequest
+      ? undefined
+      : workflowSignals.actions.find(
       (action) => action.type === "open_handwriting_canvas",
-    );
+        );
     if (openCanvasAction && openCanvasAction.type === "open_handwriting_canvas") {
       workflowRequest = startDralkFromAgentIntent({
         conversationId: conversationFresh.id,
@@ -351,6 +408,7 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     userMessageId,
     assistantMessageId,
     workflowRequest,
+    actions: workflowSignals.actions,
   });
 }
 
@@ -359,12 +417,19 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
   if (!conversation) {
     throw new Error(`Conversation not found: ${input.conversationId}`);
   }
+  if (
+    (input.userId && conversation.userId !== input.userId) ||
+    (input.tenantId && conversation.tenantId !== input.tenantId)
+  ) {
+    throw new Error("Conversation access denied for current principal");
+  }
 
   conversationTaskStore.update(conversation.id, { status: "running", currentStep: "approval:resuming" });
 
   const session = new SqliteSession({ sessionId: conversation.sessionId });
   const context = createAgentContext({
     userId: input.userId ?? conversation.userId,
+    tenantId: input.tenantId ?? conversation.tenantId,
     conversationId: conversation.id,
     projectId: conversation.projectId ?? undefined,
     currentSurface: "ask_ai",
@@ -382,9 +447,14 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
     runStateId: input.runStateId,
     decisions: input.decisions,
     request: agentRequest,
+    signal: input.signal,
   });
 
-  const charts = extractRenderChartSpecs(turn.response.actions);
+  const workflowSignals = extractWorkflowSignalsFromToolRuns(
+    turn.requestId,
+    turn.response.actions,
+  );
+  const charts = extractRenderChartSpecs(workflowSignals.actions);
   const assistantMessageId = randomUUID();
   const evidence = enrichEvidenceFromToolRuns(turn.structured.evidence, turn.requestId);
   const artifacts = enrichArtifactsFromToolRuns(turn.structured.artifacts, turn.requestId);
@@ -395,13 +465,13 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
     role: "assistant",
     content: turn.response.message,
     blocks: turn.response.blocks,
-    actions: turn.response.actions,
+    actions: workflowSignals.actions,
     charts,
     evidence,
     artifacts,
   });
 
-  let workflowRequest: WorkflowRequest | undefined;
+  const workflowRequest = workflowSignals.workflowRequest;
   if (turn.kind === "completed") {
     conversationTaskStore.update(conversation.id, { status: "ready", currentStep: null });
   }
@@ -413,6 +483,7 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
     userMessageId: "",
     assistantMessageId,
     workflowRequest,
+    actions: workflowSignals.actions,
   });
 }
 

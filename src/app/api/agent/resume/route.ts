@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const portal = resolvePortalUserContext({
       headers: request.headers,
       bodyUserId: payload.userId,
+      bodyTenantId: payload.tenantId,
     });
 
     writeAuditEvent({
@@ -37,6 +38,8 @@ export async function POST(request: Request) {
     const result = await resumeAgentTurn({
       ...payload,
       userId: portal.userId,
+      tenantId: portal.tenantId,
+      signal: request.signal,
     });
 
     writeAuditEvent({

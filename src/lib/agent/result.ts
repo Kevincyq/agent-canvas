@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { stripInlineSourceMentions, stripInlineSourcesFromBlocks } from "@/lib/content/strip-inline-sources";
 import type { AgentAction, AgentResponse } from "@/types/agent";
 import type { ContentBlock } from "@/types/content-block";
 
@@ -221,15 +222,17 @@ function mapSuggestedAction(action: AskAiSuggestedAction): AgentAction | null {
 export function structuredOutputToAgentResponse(
   output: AskAiStructuredOutput,
 ): AgentResponse {
-  const blocks = output.blocks
-    .map(mapBlock)
-    .filter((block): block is ContentBlock => block !== null);
+  const blocks = stripInlineSourcesFromBlocks(
+    output.blocks
+      .map(mapBlock)
+      .filter((block): block is ContentBlock => block !== null),
+  );
   const actions = output.suggestedActions
     .map(mapSuggestedAction)
     .filter((action): action is AgentAction => action !== null);
 
   return {
-    message: output.message,
+    message: stripInlineSourceMentions(output.message),
     blocks,
     actions,
   };

@@ -61,6 +61,7 @@ export const StartDralkWorkflowRequestSchema = z.object({
   language: z.string().optional(),
   forceNew: z.boolean().optional(),
   userId: z.string().optional(),
+  tenantId: z.string().optional(),
 });
 export type StartDralkWorkflowRequest = z.infer<typeof StartDralkWorkflowRequestSchema>;
 

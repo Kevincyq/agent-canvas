@@ -11,6 +11,7 @@ import type {
 type ConversationRow = {
   id: string;
   user_id: string;
+  tenant_id: string;
   project_id: string | null;
   title: string;
   status: string;
@@ -25,6 +26,7 @@ function mapConversation(row: ConversationRow): ConversationTask {
   return {
     id: row.id,
     userId: row.user_id,
+    tenantId: row.tenant_id,
     projectId: row.project_id,
     title: row.title,
     status: row.status as ConversationStatus,
@@ -44,6 +46,7 @@ export function createConversation(
   const conversation: ConversationTask = {
     id: randomUUID(),
     userId: input.userId ?? "local-user",
+    tenantId: input.tenantId ?? "local-tenant",
     projectId: input.projectId ?? null,
     title: input.title ?? "New task",
     status: "ready",
@@ -56,11 +59,12 @@ export function createConversation(
 
   db.prepare(
     `INSERT INTO conversations (
-      id, user_id, project_id, title, status, current_step, session_id, origin_surface, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, user_id, tenant_id, project_id, title, status, current_step, session_id, origin_surface, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     conversation.id,
     conversation.userId,
+    conversation.tenantId,
     conversation.projectId,
     conversation.title,
     conversation.status,
@@ -82,15 +86,19 @@ export function getConversationById(id: string): ConversationTask | null {
   return row ? mapConversation(row) : null;
 }
 
-export function listConversations(userId = "local-user", limit = 50): ConversationTask[] {
+export function listConversations(
+  userId = "local-user",
+  tenantId = "local-tenant",
+  limit = 50,
+): ConversationTask[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM conversations
-       WHERE user_id = ?
+       WHERE user_id = ? AND tenant_id = ?
        ORDER BY updated_at DESC
        LIMIT ?`,
     )
-    .all(userId, limit) as ConversationRow[];
+    .all(userId, tenantId, limit) as ConversationRow[];
 
   return rows.map(mapConversation);
 }
@@ -144,6 +152,12 @@ export function ensureConversation(
     const existing = getConversationById(conversationId);
     if (!existing) {
       throw new Error(`Conversation not found: ${conversationId}`);
+    }
+    if (options.userId && existing.userId !== options.userId) {
+      throw new Error("Conversation access denied for current user");
+    }
+    if (options.tenantId && existing.tenantId !== options.tenantId) {
+      throw new Error("Conversation access denied for current tenant");
     }
     return existing;
   }

@@ -93,14 +93,22 @@ export function writeAuditEvent(input: AuditEventInput): AuditEventRecord {
   };
 }
 
-export function listAuditEvents(limit = 50): AuditEventRecord[] {
+export function listAuditEvents(
+  principal: { userId: string; tenantId: string },
+  limit = 50,
+): AuditEventRecord[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM audit_events
+       WHERE user_id = ? AND tenant_id = ?
        ORDER BY created_at DESC
        LIMIT ?`,
     )
-    .all(Math.min(Math.max(limit, 1), 200)) as Array<{
+    .all(
+      principal.userId,
+      principal.tenantId,
+      Math.min(Math.max(limit, 1), 200),
+    ) as Array<{
     id: string;
     request_id: string;
     conversation_id: string | null;

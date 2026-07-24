@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const portal = resolvePortalUserContext({
       headers: request.headers,
       bodyUserId: payload.userId,
+      bodyTenantId: payload.tenantId,
     });
 
     writeAuditEvent({
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
         title: titleFromFirstMessage(payload.message),
         originSurface: "askai",
         userId: portal.userId,
+        tenantId: portal.tenantId,
       });
 
       const demoBlocks = [
@@ -132,6 +134,8 @@ export async function POST(request: Request) {
     const result = await runAgentTurn({
       ...payload,
       userId: portal.userId,
+      tenantId: portal.tenantId,
+      signal: request.signal,
     });
 
     writeAuditEvent({

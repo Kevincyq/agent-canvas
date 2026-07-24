@@ -17,9 +17,11 @@ type ToolMetricRow = {
   avg_latency_ms: number | null;
 };
 
-export function summarizeToolMetrics(options?: {
+export function summarizeToolMetrics(options: {
   conversationId?: string;
   limitTools?: number;
+  userId: string;
+  tenantId: string;
 }): ToolMetric[] {
   const conversationId = options?.conversationId;
   const limitTools = Math.min(Math.max(options?.limitTools ?? 50, 1), 100);
@@ -29,10 +31,10 @@ export function summarizeToolMetrics(options?: {
       ? getDb()
           .prepare(
             `SELECT
-               tool_name,
+               tool_runs.tool_name AS tool_name,
                COUNT(*) AS total,
-               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
-               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+               SUM(CASE WHEN tool_runs.status = 'completed' THEN 1 ELSE 0 END) AS completed,
+               SUM(CASE WHEN tool_runs.status = 'failed' THEN 1 ELSE 0 END) AS failed,
                AVG(
                  CASE
                    WHEN completed_at IS NOT NULL
@@ -41,19 +43,23 @@ export function summarizeToolMetrics(options?: {
                  END
                ) AS avg_latency_ms
              FROM tool_runs
-             WHERE conversation_id = ?
-             GROUP BY tool_name
+             INNER JOIN conversations
+               ON conversations.id = tool_runs.conversation_id
+             WHERE tool_runs.conversation_id = ?
+               AND conversations.user_id = ?
+               AND conversations.tenant_id = ?
+             GROUP BY tool_runs.tool_name
              ORDER BY total DESC
              LIMIT ?`,
           )
-          .all(conversationId, limitTools)
+          .all(conversationId, options.userId, options.tenantId, limitTools)
       : getDb()
           .prepare(
             `SELECT
-               tool_name,
+               tool_runs.tool_name AS tool_name,
                COUNT(*) AS total,
-               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
-               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+               SUM(CASE WHEN tool_runs.status = 'completed' THEN 1 ELSE 0 END) AS completed,
+               SUM(CASE WHEN tool_runs.status = 'failed' THEN 1 ELSE 0 END) AS failed,
                AVG(
                  CASE
                    WHEN completed_at IS NOT NULL
@@ -62,11 +68,15 @@ export function summarizeToolMetrics(options?: {
                  END
                ) AS avg_latency_ms
              FROM tool_runs
-             GROUP BY tool_name
+             INNER JOIN conversations
+               ON conversations.id = tool_runs.conversation_id
+             WHERE conversations.user_id = ?
+               AND conversations.tenant_id = ?
+             GROUP BY tool_runs.tool_name
              ORDER BY total DESC
              LIMIT ?`,
           )
-          .all(limitTools)
+          .all(options.userId, options.tenantId, limitTools)
   ) as ToolMetricRow[];
 
   return rows.map((row) => {

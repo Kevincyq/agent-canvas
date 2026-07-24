@@ -1,4 +1,5 @@
 import type { RunToolApprovalItem } from "@openai/agents";
+import { riskLevelForRegisteredTool } from "@/lib/agent/tool-policy";
 
 export type PendingApprovalView = {
   id: string;
@@ -22,11 +23,5 @@ export function extractApprovalCallId(item: RunToolApprovalItem): string {
 }
 
 export function riskLevelForTool(toolName: string): "L0" | "L1" | "L2" {
-  if (toolName === "create_todo") {
-    return "L2";
-  }
-  if (toolName === "save_artifact_to_project") {
-    return "L1";
-  }
-  return "L0";
+  return riskLevelForRegisteredTool(toolName);
 }
