@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { DEFAULT_FLUXINK_HWR_UI_RESOURCE_URI, isAllowedFluxInkUiResourceUri } from "@/lib/mcp/constants";
-import { readMcpUiResource } from "@/lib/mcp/client";
+import { getDefaultToolGateway } from "@/lib/tools/registry";
+import type { GatewayContext } from "@/types/tool-gateway";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
+
+const SYSTEM_CONTEXT: GatewayContext = {
+  userId: "system",
+  tenantId: "system",
+  conversationId: "system",
+  currentSurface: "canvas",
+  selectedSourceIds: [],
+  permissions: {},
+};
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -20,8 +31,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    const resource = await readMcpUiResource(uri);
-    const content = resource.contents[0];
+    const receipt = await getDefaultToolGateway().invoke(
+      "fluxink",
+      "read_ui",
+      { uri },
+      SYSTEM_CONTEXT,
+    );
+    if (!receipt.ok) {
+      throw new Error(receipt.error?.message ?? "Failed to read MCP UI resource.");
+    }
+    const resource = receipt.data as { contents?: Array<{ uri?: string; mimeType?: string; html?: string }> };
+    const content = resource.contents?.[0];
+    if (!content?.html) {
+      throw new Error("MCP UI resource returned no HTML.");
+    }
 
     return NextResponse.json({
       ok: true,

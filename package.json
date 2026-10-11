@@ -22,6 +22,7 @@
     "spike:m6": "node --env-file=.env.local scripts/m6-project-ux-spike.mjs",
     "spike:m7": "node --env-file=.env.local scripts/m7-eval-observability-spike.mjs",
     "eval:p0:live": "node --env-file=.env.local scripts/p0-agent-live-eval.mjs",
+    "eval:p05:workflow": "node --env-file=.env.local scripts/p05-workflow-registry-eval.mjs",
     "reset:mock": "node --env-file=.env.local scripts/reset-mock-data.mjs"
   },
   "dependencies": {

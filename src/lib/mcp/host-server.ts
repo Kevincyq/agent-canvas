@@ -131,11 +131,13 @@ export async function handleMcpHostProxyRequest(
         return jsonRpcError(id, -32601, `Method not supported by MCP App Host proxy: ${request.method}`);
     }
   } catch (error) {
-    return jsonRpcError(
-      id,
-      -32000,
-      error instanceof Error ? error.message : "MCP App Host proxy request failed.",
-    );
+    const message =
+      error instanceof Error ? error.message : "MCP App Host proxy request failed.";
+    const isTimeout =
+      message.includes("timed out") ||
+      message.includes("-32001") ||
+      message.includes("Request timed out");
+    return jsonRpcError(id, isTimeout ? -32001 : -32000, message);
   }
 }
 

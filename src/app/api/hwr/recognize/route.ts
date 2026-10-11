@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { callAllowedMcpTool } from "@/lib/mcp/client";
 import { HWR_TOOL_ALIASES } from "@/lib/mcp/constants";
+import { getDefaultToolGateway } from "@/lib/tools/registry";
+import type { GatewayContext } from "@/types/tool-gateway";
 
 export const runtime = "nodejs";
 
@@ -39,20 +40,37 @@ function asFluxInkRecognizePayload(value: unknown): Record<string, unknown> {
   };
 }
 
+function systemGatewayContext(): GatewayContext {
+  return {
+    userId: "system",
+    tenantId: "system",
+    conversationId: "system",
+    currentSurface: "canvas",
+    selectedSourceIds: [],
+    permissions: {},
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as unknown;
     const payload = WidgetRecognizeRequestSchema.parse(body);
-    const result = await callAllowedMcpTool(HWR_TOOL_ALIASES.recognizeHandwriting[0], {
-      strokes: payload.strokes,
-      mode: mapWidgetMode(payload.mode),
-      ...(payload.language ? { language: payload.language } : {}),
-    });
+    const receipt = await getDefaultToolGateway().invoke(
+      "fluxink",
+      "recognize",
+      {
+        toolName: HWR_TOOL_ALIASES.recognizeHandwriting[0],
+        strokes: payload.strokes,
+        mode: mapWidgetMode(payload.mode),
+        ...(payload.language ? { language: payload.language } : {}),
+      },
+      systemGatewayContext(),
+    );
 
-    const responseBody = asFluxInkRecognizePayload(result);
+    const responseBody = asFluxInkRecognizePayload(receipt.data ?? receipt);
 
     return NextResponse.json(responseBody, {
-      status: responseBody.success === false ? 502 : 200,
+      status: responseBody.success === false || !receipt.ok ? 502 : 200,
     });
   } catch (error) {
     return NextResponse.json(

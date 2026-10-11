@@ -94,9 +94,10 @@ export const AgentRequestSchema = z.object({
   canvas: z
     .object({
       isOpen: z.boolean(),
-      strokeCount: z.number().int().nonnegative(),
-      textCount: z.number().int().nonnegative(),
-      selectedElementId: z.string().nullable(),
+      strokeCount: z.number().int().nonnegative().optional(),
+      textCount: z.number().int().nonnegative().optional(),
+      selectedElementId: z.string().nullable().optional(),
+      host: z.enum(["fluxink_widget", "local_canvas"]).optional(),
     })
     .optional(),
   attachments: z.array(AgentAttachmentSchema).default([]),

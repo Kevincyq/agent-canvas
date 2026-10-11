@@ -6,6 +6,11 @@ import { PlotCard } from "@/components/chart/PlotCard";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ContentBlockPreview } from "@/components/content/ContentBlockPreview";
 import { SvgDiagramCard } from "@/components/svg/SvgDiagramCard";
+import {
+  isCompleteContentBlock,
+  isCompletePlotSpec,
+  isCompleteSvgSpec,
+} from "@/lib/content/complete-visual";
 import type { ContentBlock } from "@/types/content-block";
 import type { PlotSpec } from "@/types/plot";
 import type { SvgSpec } from "@/types/svg";
@@ -28,9 +33,12 @@ export function ContentBlockCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const intro = content?.trim() ?? "";
-  const canEdit = Boolean(onEdit && blocks.length > 0);
+  const completeBlocks = blocks.filter(isCompleteContentBlock);
+  const completeCharts = charts.filter(isCompletePlotSpec);
+  const completeSvgs = svgs.filter(isCompleteSvgSpec);
+  const canEdit = Boolean(onEdit && completeBlocks.length > 0);
   const hasBody =
-    intro.length > 0 || blocks.length > 0 || charts.length > 0 || svgs.length > 0;
+    intro.length > 0 || completeBlocks.length > 0 || completeCharts.length > 0 || completeSvgs.length > 0;
 
   useEffect(() => {
     if (!menuOpen) {
@@ -90,17 +98,17 @@ export function ContentBlockCard({
             <ChatMessageContent content={intro} variant="assistant" />
           </div>
         ) : null}
-        {blocks.map((block) => (
+        {completeBlocks.map((block) => (
           <div key={block.id} className="answer-document-section">
             <ContentBlockPreview block={block} />
           </div>
         ))}
-        {charts.map((spec, index) => (
+        {completeCharts.map((spec, index) => (
           <div key={`chart-${index}`} className="answer-document-media">
             <PlotCard spec={spec} />
           </div>
         ))}
-        {svgs.map((spec, index) => (
+        {completeSvgs.map((spec, index) => (
           <div key={`svg-${index}`} className="answer-document-media">
             <SvgDiagramCard spec={spec} />
           </div>

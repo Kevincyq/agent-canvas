@@ -9,6 +9,11 @@ import {
   type DralkQueryPayload,
   type WorkflowRequest,
 } from "@/types/workflow";
+import type { WorkflowResult } from "@/types/workflow-runtime";
+import {
+  RegisteredWorkflowRequestSchema,
+  type RegisteredWorkflowRequest,
+} from "@/types/workflow-runtime";
 
 export const AgentRunEvidenceSchema = z.object({
   id: z.string(),
@@ -42,9 +47,11 @@ export const AgentRunRequestSchema = z.object({
   canvas: z
     .object({
       isOpen: z.boolean(),
-      strokeCount: z.number().int().nonnegative(),
-      textCount: z.number().int().nonnegative(),
-      selectedElementId: z.string().nullable(),
+      // Legacy local-canvas counters (optional). FluxInk host does not mirror strokes.
+      strokeCount: z.number().int().nonnegative().optional(),
+      textCount: z.number().int().nonnegative().optional(),
+      selectedElementId: z.string().nullable().optional(),
+      host: z.enum(["fluxink_widget", "local_canvas"]).optional(),
     })
     .optional(),
   attachments: z.array(AgentAttachmentSchema).default([]),
@@ -59,16 +66,21 @@ export type AgentRunRequest = {
   message: string;
   canvas?: {
     isOpen: boolean;
-    strokeCount: number;
-    textCount: number;
-    selectedElementId: string | null;
+    strokeCount?: number;
+    textCount?: number;
+    selectedElementId?: string | null;
+    host?: "fluxink_widget" | "local_canvas";
   };
   attachments: z.infer<typeof AgentAttachmentSchema>[];
   dralkContext?: Partial<DralkQueryPayload>;
   userId?: string;
   tenantId?: string;
   projectId?: string | null;
+  /** Internal runtime event. Public /api/agent/run does not accept this field. */
+  workflowResult?: WorkflowResult;
   signal?: AbortSignal;
+  /** Internal runtime event sink for SSE. Public /api/agent/run does not accept this field. */
+  onEvent?: import("@/types/agent-stream").AgentRuntimeEventSink;
 };
 
 export const AgentRunResponseSchema = z.object({
@@ -85,6 +97,7 @@ export const AgentRunResponseSchema = z.object({
   artifacts: z.array(AgentRunArtifactRefSchema).optional(),
   requestId: z.string().optional(),
   workflowRequest: WorkflowRequestSchema.optional(),
+  registeredWorkflowRequest: RegisteredWorkflowRequestSchema.optional(),
   runStateId: z.string().optional(),
   approvals: z.array(ApprovalCardSchema).optional(),
 });
@@ -103,6 +116,7 @@ export type AgentRunResponse = {
   artifacts?: z.infer<typeof AgentRunArtifactRefSchema>[];
   requestId?: string;
   workflowRequest?: WorkflowRequest;
+  registeredWorkflowRequest?: RegisteredWorkflowRequest;
   runStateId?: string;
   approvals?: ApprovalCard[];
 };
@@ -126,4 +140,5 @@ export const AgentResumeRequestSchema = z.object({
 export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema> & {
   tenantId?: string;
   signal?: AbortSignal;
+  onEvent?: import("@/types/agent-stream").AgentRuntimeEventSink;
 };

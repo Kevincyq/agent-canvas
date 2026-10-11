@@ -1,41 +1,40 @@
 import { NextResponse } from "next/server";
 
-import { createAzureSpeechToken } from "@/lib/asr/create-azure-token";
-import { getAsrConfig, isAsrConfigured } from "@/lib/asr/config";
+import { getDefaultToolGateway } from "@/lib/tools/registry";
+import type { GatewayContext } from "@/types/tool-gateway";
 
 export const runtime = "nodejs";
 
+const SYSTEM_CONTEXT: GatewayContext = {
+  userId: "system",
+  tenantId: "system",
+  conversationId: "system",
+  currentSurface: "ask_ai",
+  selectedSourceIds: [],
+  permissions: {},
+};
+
 export async function POST() {
-  try {
-    const config = getAsrConfig();
+  const receipt = await getDefaultToolGateway().invoke(
+    "azure_asr",
+    "issue_token",
+    {},
+    SYSTEM_CONTEXT,
+  );
 
-    if (!isAsrConfigured(config)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Missing AZURE_STT_KEY or AZURE_STT_REGION for realtime transcription.",
-        },
-        { status: 501 },
-      );
-    }
-
-    const session = await createAzureSpeechToken(config);
-
-    return NextResponse.json({
-      ok: true,
-      ...session,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create Azure speech session.";
-
-    console.error("[asr/realtime/session]", message);
-
+  if (!receipt.ok) {
+    const notConfigured = receipt.error?.code === "ASR_NOT_CONFIGURED";
     return NextResponse.json(
       {
         ok: false,
-        error: message,
+        error: receipt.error?.message ?? "Failed to create Azure speech session.",
       },
-      { status: 502 },
+      { status: notConfigured ? 501 : 502 },
     );
   }
+
+  return NextResponse.json({
+    ok: true,
+    ...(receipt.data as Record<string, unknown>),
+  });
 }

@@ -6,6 +6,7 @@ import { MIGRATION_003_MESSAGE_EVIDENCE } from "@/lib/db/migrations/003_message_
 import { MIGRATION_004_AUDIT_EVENTS } from "@/lib/db/migrations/004_audit_events";
 import { MIGRATION_005_MEETING_CALENDAR } from "@/lib/db/migrations/005_meeting_calendar";
 import { MIGRATION_006_RUNTIME_GOVERNANCE } from "@/lib/db/migrations/006_runtime_governance";
+import { MIGRATION_007_WORKFLOW_REGISTRY } from "@/lib/db/migrations/007_workflow_registry";
 
 type Migration = {
   id: string;
@@ -36,6 +37,10 @@ const MIGRATIONS: Migration[] = [
   {
     id: "006_runtime_governance",
     sql: MIGRATION_006_RUNTIME_GOVERNANCE,
+  },
+  {
+    id: "007_workflow_registry",
+    sql: MIGRATION_007_WORKFLOW_REGISTRY,
   },
 ];
 

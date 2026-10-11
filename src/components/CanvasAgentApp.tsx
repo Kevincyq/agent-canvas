@@ -6,11 +6,16 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 import { FluxInkWidgetHost } from "@/components/canvas/FluxInkWidgetHost";
 import { ProjectNav, type ProjectNavItem } from "@/components/nav/ProjectNav";
 import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/voice/VoiceRecorder";
-import { createCanvasSummary } from "@/lib/canvas/actions";
+import { postAgentEndpoint, progressLabelForStreamEvent } from "@/lib/agent/client-run";
 import {
   buildCompactDralkQueryPayload,
   prepareRecognitionForComposer,
 } from "@/lib/canvas/composer";
+import {
+  isCompleteContentBlock,
+  isCompletePlotSpec,
+  isCompleteSvgSpec,
+} from "@/lib/content/complete-visual";
 import { markAndroidTabletDocument } from "@/lib/device/tablet";
 import { extractRenderChartSpecs } from "@/lib/plot/extract-charts";
 import { extractLegacySvgFences, extractRenderSvgSpecs } from "@/lib/svg/extract";
@@ -29,6 +34,7 @@ import type {
   HwrOpenResponse,
 } from "@/types/agent";
 import type { AgentRunResponse, ApprovalCard } from "@/types/agent-runtime";
+import { STREAMING_BLOCK_ID_PREFIX } from "@/types/agent-stream";
 import type { ContentBlock } from "@/types/content-block";
 import type { MeetingWorkflowRecord } from "@/types/meeting-workflow";
 import type { ConversationTask } from "@/types/task";
@@ -43,6 +49,46 @@ const welcomeMessage: ChatMessage = {
   content: "你好，我是 AskAI Agent",
 };
 
+/** Drop half-streamed placeholders plus any earlier copy of the settled block. */
+function withoutStreamingBlocks(
+  blocks: ContentBlock[] | undefined,
+  settledBlockId?: string,
+): ContentBlock[] {
+  return (blocks ?? []).filter(
+    (item) =>
+      !item.id.startsWith(STREAMING_BLOCK_ID_PREFIX) && item.id !== settledBlockId,
+  );
+}
+
+function appendStreamingBlockDelta(
+  message: ChatMessage,
+  blockId: string,
+  title: string | undefined,
+  delta: string,
+): ChatMessage {
+  const blocks = message.blocks ?? [];
+  const existing = blocks.find((item) => item.id === blockId);
+
+  if (!existing) {
+    return {
+      ...message,
+      blocks: [
+        ...blocks,
+        { id: blockId, type: "markdown", sourceFormat: "markdown", title, source: delta },
+      ],
+    };
+  }
+
+  return {
+    ...message,
+    blocks: blocks.map((item) =>
+      item.id === blockId && item.type === "markdown"
+        ? { ...item, source: `${item.source ?? ""}${delta}` }
+        : item,
+    ),
+  };
+}
+
 type CanvasStatus = "idle" | "opening" | "ready" | "recognized" | "error";
 type CanvasDisplayMode = "inline" | "fullscreen";
 type WidgetStatus = "loading" | "ready" | "recognized" | "error";
@@ -51,6 +97,7 @@ export function CanvasAgentApp() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage]);
   const [busy, setBusy] = useState(false);
+  const [runProgress, setRunProgress] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState(true);
   const [activeWorkflow, setActiveWorkflow] = useState<DralkWorkflowRecord | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalCard[]>([]);
@@ -578,112 +625,6 @@ export function CanvasAgentApp() {
     window.localStorage.removeItem(WORKFLOW_STORAGE_KEY);
   }
 
-  async function handleStartDralk() {
-    // Button only opens/focuses the canvas — it does not toggle into an "end" state.
-    if (canvasOpen && activeWorkflow) {
-      setCanvasCollapsed(false);
-      setCanvasDisplayMode("inline");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const response = await fetch("/api/workflows/dralk/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: conversationId ?? undefined,
-          origin: "user_button",
-          prompt: "请在画布中边画边说输入内容",
-          forceNew: true,
-        }),
-      });
-      const payload = (await response.json()) as {
-        conversationId: string;
-        workflow?: DralkWorkflowRecord;
-        workflowRequest: WorkflowRequest;
-        userMessageId?: string;
-        assistantMessageId?: string;
-        message?: string;
-      };
-      if (!response.ok) {
-        throw new Error(payload.message || "启动 Dralk 失败");
-      }
-      persistConversationId(payload.conversationId);
-
-      // Reload messages so button entry is part of the chat timeline.
-      const conversationResponse = await fetch(`/api/conversations/${payload.conversationId}`);
-      if (conversationResponse.ok) {
-        const conversationPayload = (await conversationResponse.json()) as {
-          messages: ChatMessage[];
-        };
-        setMessages(
-          conversationPayload.messages.length > 0
-            ? conversationPayload.messages
-            : [welcomeMessage],
-        );
-      }
-
-      const anchorId = payload.assistantMessageId || undefined;
-      if (anchorId) {
-        setCanvasAfterMessageId(anchorId);
-      }
-      await openCanvasFromWorkflowRequest(payload.workflowRequest, {
-        afterMessageId: anchorId,
-        workflow: payload.workflow,
-      });
-      await refreshRecentConversations();
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: error instanceof Error ? error.message : "启动 Dralk 失败",
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleStartMeeting() {
-    setBusy(true);
-    try {
-      const response = await fetch("/api/workflows/meeting/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: conversationId ?? undefined,
-          origin: "user_button",
-        }),
-      });
-      const payload = (await response.json()) as {
-        conversationId?: string;
-        workflow?: MeetingWorkflowRecord;
-        message?: string;
-      };
-      if (!response.ok || !payload.conversationId || !payload.workflow) {
-        throw new Error(payload.message || "启动会议失败");
-      }
-      persistConversationId(payload.conversationId);
-      setMeetingWorkflow(payload.workflow);
-      await loadConversationById(payload.conversationId);
-      await refreshRecentConversations();
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: error instanceof Error ? error.message : "启动会议失败",
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleFinishMeeting() {
     if (!meetingWorkflow) {
       return;
@@ -735,15 +676,18 @@ export function CanvasAgentApp() {
     );
   }
 
-  const canvasSummary = useMemo(
-    () =>
-      createCanvasSummary(
-        canvasOpen,
-        [],
-        null,
-      ),
-    [canvasOpen],
-  );
+  const canvasSummary = useMemo(() => {
+    // FluxInk strokes live inside the widget iframe and are never mirrored into
+    // local CanvasElement[]. Do not send fake strokeCount=0 — models treat it as
+    // "no handwriting history" and answer incorrectly.
+    if (!canvasOpen) {
+      return undefined;
+    }
+    return {
+      isOpen: true as const,
+      host: "fluxink_widget" as const,
+    };
+  }, [canvasOpen]);
 
   const getCanvasElapsedMs = useCallback(() => {
     if (canvasSessionStartedAtRef.current <= 0) {
@@ -752,6 +696,37 @@ export function CanvasAgentApp() {
 
     return Math.max(0, Math.round(performance.now() - canvasSessionStartedAtRef.current));
   }, []);
+
+  const streamingAssistantIdRef = useRef<string | null>(null);
+
+  function resetStreamingAssistant() {
+    streamingAssistantIdRef.current = null;
+  }
+
+  function upsertStreamingAssistant(
+    updater: (current: ChatMessage) => ChatMessage,
+  ) {
+    const id = streamingAssistantIdRef.current ?? crypto.randomUUID();
+    streamingAssistantIdRef.current = id;
+    setMessages((current) => {
+      const existing = current.find((item) => item.id === id);
+      const base: ChatMessage =
+        existing ??
+        ({
+          id,
+          role: "assistant",
+          content: "",
+          blocks: [],
+          charts: [],
+          svgs: [],
+        } satisfies ChatMessage);
+      const next = updater(base);
+      if (!existing) {
+        return [...current, next];
+      }
+      return current.map((item) => (item.id === id ? next : item));
+    });
+  }
 
   async function handleSend(message: string) {
     const cleanedMessage = stripVoiceAttachmentReference(message);
@@ -768,6 +743,7 @@ export function CanvasAgentApp() {
 
     setMessages((current) => [...current, userMessage]);
     setBusy(true);
+    setRunProgress("开始处理");
     setVoiceAttachment(null);
     voiceAttachmentRef.current = null;
     voiceRecorderRef.current?.clearTranscript();
@@ -798,26 +774,59 @@ export function CanvasAgentApp() {
         });
       }
 
-      const response = await fetch("/api/agent/run", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      resetStreamingAssistant();
+      const payload = await postAgentEndpoint(
+        "/api/agent/run",
+        {
           conversationId: conversationId ?? undefined,
           projectId: activeProjectId,
           message: cleanedMessage,
           canvas: canvasSummary,
           attachments: outboundAttachments,
           dralkContext: compactDralk?.displaySummary ? compactDralk : undefined,
-        }),
-      });
-
-      const payload = (await response.json()) as AgentRunResponse;
-
-      if (!response.ok) {
-        throw new Error(payload.message || "Agent run 请求失败");
-      }
+        },
+        async (event) => {
+          const label = progressLabelForStreamEvent(event);
+          if (label) {
+            setRunProgress(label);
+          }
+          if (event.type === "answer.delta") {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              content: current.content + event.delta,
+            }));
+          }
+          if (event.type === "answer.message") {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              content: event.message,
+            }));
+          }
+          if (event.type === "block.delta") {
+            upsertStreamingAssistant((current) =>
+              appendStreamingBlockDelta(current, event.blockId, event.title, event.delta),
+            );
+          }
+          if (event.type === "block.completed" && isCompleteContentBlock(event.block)) {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              blocks: [...withoutStreamingBlocks(current.blocks, event.block.id), event.block],
+            }));
+          }
+          if (event.type === "chart.completed" && isCompletePlotSpec(event.spec)) {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              charts: [...(current.charts ?? []), event.spec],
+            }));
+          }
+          if (event.type === "svg.completed" && isCompleteSvgSpec(event.spec)) {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              svgs: [...(current.svgs ?? []), event.spec],
+            }));
+          }
+        },
+      );
 
       persistConversationId(payload.conversationId);
       setPendingApprovals(payload.approvals ?? []);
@@ -850,10 +859,15 @@ export function CanvasAgentApp() {
         artifacts: payload.artifacts,
       };
 
+      // Read the ref now: state updaters run during a later render, by which time
+      // the `finally` block has already cleared it.
+      const streamId = streamingAssistantIdRef.current;
       setMessages((current) => {
-        const withoutTempUser = current.filter((item) => item.id !== userMessage.id);
+        const withoutTemp = current.filter(
+          (item) => item.id !== userMessage.id && item.id !== streamId,
+        );
         return [
-          ...withoutTempUser,
+          ...withoutTemp,
           {
             ...userMessage,
             id: payload.userMessageId || userMessage.id,
@@ -932,6 +946,8 @@ export function CanvasAgentApp() {
         },
       ]);
     } finally {
+      resetStreamingAssistant();
+      setRunProgress(null);
       setBusy(false);
     }
   }
@@ -946,11 +962,12 @@ export function CanvasAgentApp() {
 
     const runStateId = pendingApprovals[0]?.runStateId;
     setBusy(true);
+    setRunProgress("恢复审批");
+    resetStreamingAssistant();
     try {
-      const response = await fetch("/api/agent/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await postAgentEndpoint(
+        "/api/agent/resume",
+        {
           conversationId,
           runStateId,
           decisions: [
@@ -961,12 +978,43 @@ export function CanvasAgentApp() {
                 input.decision === "reject" ? "用户拒绝了该待办写入。" : undefined,
             },
           ],
-        }),
-      });
-      const payload = (await response.json()) as AgentRunResponse;
-      if (!response.ok) {
-        throw new Error(payload.message || "审批恢复失败");
-      }
+        },
+        async (event) => {
+          const label = progressLabelForStreamEvent(event);
+          if (label) {
+            setRunProgress(label);
+          }
+          if (event.type === "answer.delta") {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              content: current.content + event.delta,
+            }));
+          }
+          if (event.type === "answer.message") {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              content: event.message,
+            }));
+          }
+          if (event.type === "block.delta") {
+            upsertStreamingAssistant((current) =>
+              appendStreamingBlockDelta(current, event.blockId, event.title, event.delta),
+            );
+          }
+          if (event.type === "block.completed" && isCompleteContentBlock(event.block)) {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              blocks: [...withoutStreamingBlocks(current.blocks, event.block.id), event.block],
+            }));
+          }
+          if (event.type === "chart.completed" && isCompletePlotSpec(event.spec)) {
+            upsertStreamingAssistant((current) => ({
+              ...current,
+              charts: [...(current.charts ?? []), event.spec],
+            }));
+          }
+        },
+      );
 
       setPendingApprovals(payload.approvals ?? []);
       const assistantMessage: ChatMessage = {
@@ -978,7 +1026,11 @@ export function CanvasAgentApp() {
         evidence: payload.evidence,
         artifacts: payload.artifacts,
       };
-      setMessages((current) => [...current, assistantMessage]);
+      const streamId = streamingAssistantIdRef.current;
+      setMessages((current) => [
+        ...current.filter((item) => item.id !== streamId),
+        assistantMessage,
+      ]);
       await refreshRecentConversations();
 
       if (payload.workflowRequest) {
@@ -996,6 +1048,8 @@ export function CanvasAgentApp() {
         },
       ]);
     } finally {
+      resetStreamingAssistant();
+      setRunProgress(null);
       setBusy(false);
     }
   }
@@ -1219,12 +1273,11 @@ export function CanvasAgentApp() {
         meetingWorkflow={meetingWorkflow}
         messages={messages}
         busy={busy || hydrating}
+        runProgress={runProgress}
         navOpen={navOpen}
         onToggleNav={() => setNavOpen((open) => !open)}
         onDraftChange={setComposerDraft}
         onSend={handleSend}
-        onStartDralk={handleStartDralk}
-        onStartMeeting={handleStartMeeting}
         onFinishMeeting={handleFinishMeeting}
         onWriteMeetingCalendar={handleWriteMeetingCalendar}
         onCreateDocument={handleCreateDocument}

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { emitCompleteAnswerEvents } from "@/lib/agent/emit-answer-events";
 import { createAgentContext } from "@/lib/agent/context";
 import { createFallbackResponse } from "@/lib/agent/intent";
 import {
@@ -28,6 +29,10 @@ import type {
   AgentRunResponse,
 } from "@/types/agent-runtime";
 import type { WorkflowRequest } from "@/types/workflow";
+import type {
+  RegisteredWorkflowRequest,
+  WorkflowResult,
+} from "@/types/workflow-runtime";
 import type { ToolReceipt } from "@/types/tool-receipt";
 
 /** @deprecated Prefer runAgentTurn via POST /api/agent/run. */
@@ -172,6 +177,7 @@ function extractWorkflowSignalsFromToolRuns(
   fallbackActions: AgentAction[],
 ): {
   workflowRequest?: WorkflowRequest;
+  registeredWorkflowRequest?: RegisteredWorkflowRequest;
   actions: AgentAction[];
 } {
   if (!requestId) {
@@ -179,6 +185,7 @@ function extractWorkflowSignalsFromToolRuns(
   }
 
   let workflowRequest: WorkflowRequest | undefined;
+  let registeredWorkflowRequest: RegisteredWorkflowRequest | undefined;
   let meetingId: string | null | undefined;
   for (const run of listToolRunsByRequest(requestId)) {
     if (!run.resultJson || run.status !== "completed") {
@@ -187,6 +194,7 @@ function extractWorkflowSignalsFromToolRuns(
     try {
       const receipt = JSON.parse(run.resultJson) as ToolReceipt<{
         workflowRequest?: WorkflowRequest;
+        registeredWorkflowRequest?: RegisteredWorkflowRequest;
         meetingId?: string;
       }>;
       if (!receipt.ok) {
@@ -194,6 +202,12 @@ function extractWorkflowSignalsFromToolRuns(
       }
       if (run.toolName === "start_dralk_workflow" && receipt.data?.workflowRequest) {
         workflowRequest = receipt.data.workflowRequest;
+      }
+      if (
+        run.toolName.startsWith("start_") &&
+        receipt.data?.registeredWorkflowRequest
+      ) {
+        registeredWorkflowRequest = receipt.data.registeredWorkflowRequest;
       }
       if (run.toolName === "start_meeting_workflow") {
         meetingId = receipt.data?.meetingId ?? null;
@@ -211,7 +225,7 @@ function extractWorkflowSignalsFromToolRuns(
     actions.push({ type: "open_meeting_workflow", meetingId });
   }
 
-  return { workflowRequest, actions };
+  return { workflowRequest, registeredWorkflowRequest, actions };
 }
 
 function buildRunResponse(input: {
@@ -221,7 +235,10 @@ function buildRunResponse(input: {
   userMessageId: string;
   assistantMessageId: string;
   workflowRequest?: WorkflowRequest;
+  registeredWorkflowRequest?: RegisteredWorkflowRequest;
   actions?: AgentAction[];
+  evidence?: AgentRunResponse["evidence"];
+  artifacts?: AgentRunResponse["artifacts"];
 }): AgentRunResponse {
   if (input.turn.kind === "waiting_for_approval") {
     conversationTaskStore.update(input.conversationId, {
@@ -231,14 +248,12 @@ function buildRunResponse(input: {
   }
 
   const updated = conversationTaskStore.getById(input.conversationId);
-  const evidence = enrichEvidenceFromToolRuns(
-    input.turn.structured.evidence,
-    input.turn.requestId,
-  );
-  const artifacts = enrichArtifactsFromToolRuns(
-    input.turn.structured.artifacts,
-    input.turn.requestId,
-  );
+  const evidence =
+    input.evidence ??
+    enrichEvidenceFromToolRuns(input.turn.structured.evidence, input.turn.requestId);
+  const artifacts =
+    input.artifacts ??
+    enrichArtifactsFromToolRuns(input.turn.structured.artifacts, input.turn.requestId);
 
   return {
     conversationId: input.conversationId,
@@ -257,12 +272,14 @@ function buildRunResponse(input: {
     artifacts,
     requestId: input.turn.requestId,
     workflowRequest: input.workflowRequest,
+    registeredWorkflowRequest: input.registeredWorkflowRequest,
     runStateId: input.turn.kind === "waiting_for_approval" ? input.turn.runStateId : undefined,
     approvals: input.turn.approvals ?? [],
   };
 }
 
 export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResponse> {
+  const isWorkflowContinuation = Boolean(input.workflowResult);
   const conversation = conversationTaskStore.ensure(input.conversationId, {
     userId: input.userId,
     tenantId: input.tenantId,
@@ -300,20 +317,25 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     markDralkAttachedAndRunning(conversationFresh.id);
   }
 
-  const userMessageId = randomUUID();
-  conversationTaskStore.appendMessage({
-    conversationId: conversationFresh.id,
-    id: userMessageId,
-    role: "user",
-    content: input.message,
-    attachments: input.attachments,
-  });
+  const userMessageId = input.workflowResult
+    ? `workflow-event:${input.workflowResult.workflowId}`
+    : randomUUID();
+  if (!isWorkflowContinuation) {
+    conversationTaskStore.appendMessage({
+      conversationId: conversationFresh.id,
+      id: userMessageId,
+      role: "user",
+      content: input.message,
+      attachments: input.attachments,
+    });
+  }
 
   if (
-    conversationFresh.title === "New chat" ||
-    conversationFresh.title === "New task" ||
-    conversationFresh.title === "Dralk 输入" ||
-    conversationFresh.title === "AskAI · Dralk"
+    !isWorkflowContinuation &&
+    (conversationFresh.title === "New chat" ||
+      conversationFresh.title === "New task" ||
+      conversationFresh.title === "Dralk 输入" ||
+      conversationFresh.title === "AskAI · Dralk")
   ) {
     conversationTaskStore.update(conversationFresh.id, {
       title: titleFromFirstMessage(input.message),
@@ -327,10 +349,20 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     conversationId: conversationFresh.id,
     projectId: conversationFresh.projectId ?? undefined,
     currentSurface: activeBefore ? "canvas" : "ask_ai",
+    onRuntimeEvent: input.onEvent,
   });
 
+  const workflowContinuationPrompt = input.workflowResult
+    ? [
+        "WORKFLOW_RESULT",
+        "This is a trusted runtime event, not a new user request.",
+        "Continue the original user goal from Session history. Explain fixture provenance when applicable.",
+        JSON.stringify(input.workflowResult),
+      ].join("\n")
+    : input.message;
+
   const agentRequest: AgentRequest = {
-    message: input.message,
+    message: workflowContinuationPrompt,
     history: [],
     canvas: input.canvas,
     attachments: input.attachments,
@@ -350,8 +382,20 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
   );
   const charts = extractRenderChartSpecs(workflowSignals.actions);
   const assistantMessageId = randomUUID();
-  const evidence = enrichEvidenceFromToolRuns(turn.structured.evidence, turn.requestId);
-  const artifacts = enrichArtifactsFromToolRuns(turn.structured.artifacts, turn.requestId);
+  const evidence = enrichEvidenceFromToolRuns(
+    [
+      ...(input.workflowResult?.evidence ?? []),
+      ...turn.structured.evidence,
+    ],
+    turn.requestId,
+  );
+  const artifacts = enrichArtifactsFromToolRuns(
+    [
+      ...(input.workflowResult?.artifacts ?? []),
+      ...turn.structured.artifacts,
+    ],
+    turn.requestId,
+  );
 
   conversationTaskStore.appendMessage({
     conversationId: conversationFresh.id,
@@ -387,6 +431,21 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
       } else {
         conversationTaskStore.update(conversationFresh.id, { status: "ready", currentStep: null });
       }
+    } else if (
+      workflowSignals.registeredWorkflowRequest?.status === "waiting_external"
+    ) {
+      conversationTaskStore.update(conversationFresh.id, {
+        status: "waiting_for_input",
+        currentStep: `workflow:${workflowSignals.registeredWorkflowRequest.workflowType}:waiting_external`,
+      });
+    } else if (isWorkflowContinuation) {
+      conversationTaskStore.update(conversationFresh.id, {
+        status:
+          input.workflowResult?.status === "failed"
+            ? "partially_completed"
+            : "ready",
+        currentStep: null,
+      });
     } else {
       const stillActive = getActiveDralkWorkflow(conversationFresh.id);
       if (stillActive) {
@@ -401,14 +460,36 @@ export async function runAgentTurn(input: AgentRunRequest): Promise<AgentRunResp
     }
   }
 
-  return buildRunResponse({
+  const result = buildRunResponse({
     conversationId: conversationFresh.id,
     sessionId: conversationFresh.sessionId,
     turn,
     userMessageId,
     assistantMessageId,
     workflowRequest,
+    registeredWorkflowRequest: workflowSignals.registeredWorkflowRequest,
     actions: workflowSignals.actions,
+    evidence,
+    artifacts,
+  });
+  emitCompleteAnswerEvents(result, input.onEvent);
+  return result;
+}
+
+export async function continueAgentAfterWorkflowResult(input: {
+  workflowResult: WorkflowResult;
+  userId: string;
+  tenantId: string;
+  signal?: AbortSignal;
+}): Promise<AgentRunResponse> {
+  return runAgentTurn({
+    conversationId: input.workflowResult.conversationId,
+    message: `Continue after ${input.workflowResult.workflowType} workflow result.`,
+    attachments: [],
+    userId: input.userId,
+    tenantId: input.tenantId,
+    workflowResult: input.workflowResult,
+    signal: input.signal,
   });
 }
 
@@ -433,6 +514,7 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
     conversationId: conversation.id,
     projectId: conversation.projectId ?? undefined,
     currentSurface: "ask_ai",
+    onRuntimeEvent: input.onEvent,
   });
 
   const agentRequest: AgentRequest = {
@@ -476,15 +558,18 @@ export async function resumeAgentTurn(input: AgentResumeRequest): Promise<AgentR
     conversationTaskStore.update(conversation.id, { status: "ready", currentStep: null });
   }
 
-  return buildRunResponse({
+  const result = buildRunResponse({
     conversationId: conversation.id,
     sessionId: conversation.sessionId,
     turn,
     userMessageId: "",
     assistantMessageId,
     workflowRequest,
+    registeredWorkflowRequest: workflowSignals.registeredWorkflowRequest,
     actions: workflowSignals.actions,
   });
+  emitCompleteAnswerEvents(result, input.onEvent);
+  return result;
 }
 
 export function getConversationMessagesForUi(conversationId: string): ChatMessage[] {

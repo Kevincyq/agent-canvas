@@ -82,14 +82,18 @@ export function insertMeetingWorkflow(input: {
   getDb()
     .prepare(
       `INSERT INTO workflow_states (
-        id, conversation_id, workflow_type, status, payload_json, created_at, updated_at
-      ) VALUES (?, ?, 'meeting', ?, ?, ?, ?)`,
+        id, conversation_id, workflow_type, status, payload_json,
+        execution_mode, runtime_status, version, input_json, resume_policy,
+        correlation_id, created_at, updated_at
+      ) VALUES (?, ?, 'meeting', ?, ?, 'fixture', 'running', '1.0', ?, 'agent_on_result', ?, ?, ?)`,
     )
     .run(
       record.id,
       record.conversationId,
       record.status,
       JSON.stringify(record.payload),
+      JSON.stringify({ meetingId: record.payload.meetingId }),
+      record.id,
       record.createdAt,
       record.updatedAt,
     );
@@ -118,9 +122,23 @@ export function updateMeetingWorkflow(
   getDb()
     .prepare(
       `UPDATE workflow_states
-       SET status = ?, payload_json = ?, updated_at = ?
+       SET status = ?, runtime_status = ?, payload_json = ?,
+           completed_at = CASE WHEN ? IN ('completed', 'failed', 'cancelled') THEN ? ELSE completed_at END,
+           updated_at = ?
        WHERE id = ? AND workflow_type = 'meeting'`,
     )
-    .run(updated.status, JSON.stringify(updated.payload), updated.updatedAt, id);
+    .run(
+      updated.status,
+      updated.status === "completed" ||
+        updated.status === "failed" ||
+        updated.status === "cancelled"
+        ? updated.status
+        : "running",
+      JSON.stringify(updated.payload),
+      updated.status,
+      updated.updatedAt,
+      updated.updatedAt,
+      id,
+    );
   return updated;
 }

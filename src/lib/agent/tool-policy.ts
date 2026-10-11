@@ -14,6 +14,8 @@ export const ASK_AI_TOOL_NAMES = [
   "get_meeting_context",
   "start_dralk_workflow",
   "start_meeting_workflow",
+  "start_writing_assist_workflow",
+  "start_translation_workflow",
   "save_artifact_to_project",
   "create_todo",
   "create_calendar_event",
@@ -57,6 +59,16 @@ const TOOL_POLICIES: Record<AskAiToolName, ToolPolicy> = {
   },
   start_meeting_workflow: {
     permission: "canStartMeeting",
+    riskLevel: "L0",
+    requiresApproval: false,
+  },
+  start_writing_assist_workflow: {
+    permission: "canStartWritingAssist",
+    riskLevel: "L0",
+    requiresApproval: false,
+  },
+  start_translation_workflow: {
+    permission: "canStartTranslation",
     riskLevel: "L0",
     requiresApproval: false,
   },

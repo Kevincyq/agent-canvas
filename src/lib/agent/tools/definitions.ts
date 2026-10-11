@@ -10,9 +10,8 @@ import {
   toolNeedsApproval,
 } from "@/lib/agent/tool-policy";
 import { executeLoggedTool } from "@/lib/agent/tools/tool-utils";
-import { startDralkWorkflow } from "@/lib/workflows/dralk";
-import { startMeetingWorkflow } from "@/lib/workflows/meeting";
-import { createFailedToolReceipt, createToolReceipt } from "@/types/tool-receipt";
+import { getDefaultToolGateway } from "@/lib/tools/registry";
+import { createFailedToolReceipt } from "@/types/tool-receipt";
 
 type Ctx = RunContext<AgentContext> | undefined;
 const TOOL_TIMEOUT_OPTIONS = {
@@ -140,27 +139,18 @@ export const startDralkWorkflowTool = tool({
       "start_dralk_workflow",
       { prompt, mode, language, forceNew },
       runContext,
-      async (context) => {
-        const started = startDralkWorkflow({
-          conversationId: context.conversationId,
-          origin: "agent_intent",
-          prompt,
-          mode: mode ?? "general",
-          language: language ?? "",
-          forceNew: forceNew ?? false,
-          userId: context.userId,
-          tenantId: context.tenantId,
-        });
-        return createToolReceipt({
-          ok: true,
-          tool: "start_dralk_workflow",
-          data: {
-            workflowId: started.workflow.id,
-            status: started.workflow.status,
-            workflowRequest: started.workflowRequest,
+      async (context) =>
+        getDefaultToolGateway().invoke(
+          "workflow",
+          "start_dralk",
+          {
+            prompt,
+            mode: mode ?? "general",
+            language: language ?? "",
+            forceNew: forceNew ?? false,
           },
-        });
-      },
+          context,
+        ),
     ),
 });
 
@@ -179,24 +169,92 @@ export const startMeetingWorkflowTool = tool({
       "start_meeting_workflow",
       { meetingId },
       runContext,
-      async (context) => {
-        const started = startMeetingWorkflow({
-          conversationId: context.conversationId,
-          origin: "agent_intent",
-          meetingId: meetingId ?? undefined,
-          userId: context.userId,
-          tenantId: context.tenantId,
-        });
-        return createToolReceipt({
-          ok: true,
-          tool: "start_meeting_workflow",
-          data: {
-            workflowId: started.workflow.id,
-            meetingId: started.workflow.payload.meetingId,
-            status: started.workflow.status,
+      async (context) =>
+        getDefaultToolGateway().invoke(
+          "workflow",
+          "start_meeting",
+          { meetingId: meetingId ?? undefined },
+          context,
+        ),
+    ),
+});
+
+export const startWritingAssistWorkflowTool = tool({
+  name: "start_writing_assist_workflow",
+  description:
+    "Create a persisted Writing Assist workflow request in this conversation. The workflow contract is real, but the external writing provider is not connected yet; never claim that a draft was generated until a WorkflowResult returns.",
+  parameters: z.object({
+    goal: z.string(),
+    instructions: z.string().nullable(),
+    sourceIds: z.array(z.string()),
+    audience: z.string().nullable(),
+    format: z.string().nullable(),
+  }),
+  strict: true,
+  isEnabled: isToolEnabledForContext("start_writing_assist_workflow"),
+  ...TOOL_TIMEOUT_OPTIONS,
+  execute: async (
+    { goal, instructions, sourceIds, audience, format },
+    runContext: Ctx,
+  ) =>
+    executeLoggedTool(
+      "start_writing_assist_workflow",
+      { goal, instructions, sourceIds, audience, format },
+      runContext,
+      async (context) =>
+        getDefaultToolGateway().invoke(
+          "workflow",
+          "start_writing_assist",
+          {
+            goal,
+            instructions: instructions ?? "",
+            sourceIds,
+            audience,
+            format,
+            contextRefs: sourceIds.map((id) => ({
+              type: "source" as const,
+              id,
+              version: null,
+            })),
           },
-        });
-      },
+          context,
+        ),
+    ),
+});
+
+export const startTranslationWorkflowTool = tool({
+  name: "start_translation_workflow",
+  description:
+    "Create a persisted Translation workflow request in this conversation. The workflow contract is real, but the external translation provider is not connected yet; never claim translated output until a WorkflowResult returns.",
+  parameters: z.object({
+    content: z.string(),
+    targetLanguage: z.string(),
+    sourceLanguage: z.string().nullable(),
+    preserveFormatting: z.boolean(),
+  }),
+  strict: true,
+  isEnabled: isToolEnabledForContext("start_translation_workflow"),
+  ...TOOL_TIMEOUT_OPTIONS,
+  execute: async (
+    { content, targetLanguage, sourceLanguage, preserveFormatting },
+    runContext: Ctx,
+  ) =>
+    executeLoggedTool(
+      "start_translation_workflow",
+      { content, targetLanguage, sourceLanguage, preserveFormatting },
+      runContext,
+      async (context) =>
+        getDefaultToolGateway().invoke(
+          "workflow",
+          "start_translation",
+          {
+            content,
+            targetLanguage,
+            sourceLanguage,
+            preserveFormatting,
+          },
+          context,
+        ),
     ),
 });
 

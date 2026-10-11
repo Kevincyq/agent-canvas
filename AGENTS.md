@@ -39,7 +39,7 @@ Before doing any substantive work in this workspace:
 - Project name: `agent-canvas-mvp`.
 - Workspace root: `/Users/kc/Documents/Agent_Canvas`.
 - Created/confirmed date: 2026-07-07.
-- Stack: Next.js, React, TypeScript, OpenAI Agents JS, MCP Streamable HTTP/SSE probing, native browser canvas.
+- Stack: Next.js, React, TypeScript, OpenAI Agents JS, SQLite Session, FluxInk MCP App widget, Azure realtime ASR. Canonical human snapshot: root `README.md`.
 - Main app: `src/`.
 - Embedded SDK/reference repo: `openai-agents-js/`.
 

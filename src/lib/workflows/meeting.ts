@@ -121,26 +121,8 @@ export function finishMeetingWorkflow(input: {
   }
 
   conversationTaskStore.update(input.conversationId, {
-    status: "ready",
-    currentStep: null,
-  });
-  conversationTaskStore.appendMessage({
-    conversationId: input.conversationId,
-    role: "assistant",
-    content:
-      "会议已结束。Mock 转写与会议纪要已存入个人知识库，现在可以直接询问会议结论或让 AskAI 把行动项写入 Tablet 日历。",
-    evidence: [
-      {
-        id: transcriptId,
-        label: `${workflow.payload.title} · 会议转写`,
-        source: `pkb:${transcriptId}`,
-      },
-      {
-        id: minutesId,
-        label: `${workflow.payload.title} · 会议纪要`,
-        source: `pkb:${minutesId}`,
-      },
-    ],
+    status: "running",
+    currentStep: "workflow:meeting:returning_to_agent",
   });
 
   return updated;

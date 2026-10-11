@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handleMcpHostProxyRequest, type McpHostProxyRequest } from "@/lib/mcp/host-server";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {

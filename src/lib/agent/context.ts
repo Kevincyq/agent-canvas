@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { AgentRuntimeEventSink } from "@/types/agent-stream";
 import type { ServiceAdapters } from "@/lib/services/adapters";
 import { createServiceAdapters } from "@/lib/services";
 import {
@@ -16,6 +17,8 @@ export type PermissionSnapshot = {
   canWriteCalendar: boolean;
   canStartDralk: boolean;
   canStartMeeting: boolean;
+  canStartWritingAssist: boolean;
+  canStartTranslation: boolean;
 };
 
 export type AgentSurface = "ask_ai" | "note" | "reader" | "meeting" | "canvas";
@@ -31,6 +34,7 @@ export type AgentContext = {
   services: ServiceAdapters;
   requestId: string;
   runtimeBudget: AgentRuntimeBudgetState;
+  onRuntimeEvent?: AgentRuntimeEventSink;
 };
 
 export type CreateAgentContextInput = {
@@ -44,6 +48,7 @@ export type CreateAgentContextInput = {
   services?: ServiceAdapters;
   requestId?: string;
   runtimeBudget?: AgentRuntimeBudgetState;
+  onRuntimeEvent?: AgentRuntimeEventSink;
   /** When true, omit default seed projectId (general chat). */
   allowEmptyProject?: boolean;
 };
@@ -56,6 +61,8 @@ const DEFAULT_PERMISSIONS: PermissionSnapshot = {
   canWriteCalendar: true,
   canStartDralk: true,
   canStartMeeting: true,
+  canStartWritingAssist: true,
+  canStartTranslation: true,
 };
 
 /**
@@ -83,5 +90,6 @@ export function createAgentContext(input: CreateAgentContextInput): AgentContext
     services: input.services ?? createServiceAdapters(),
     requestId: input.requestId ?? randomUUID(),
     runtimeBudget: input.runtimeBudget ?? createRuntimeBudgetState(),
+    onRuntimeEvent: input.onRuntimeEvent,
   };
 }

@@ -9,6 +9,8 @@ import {
   searchWebTool,
   startDralkWorkflowTool,
   startMeetingWorkflowTool,
+  startTranslationWorkflowTool,
+  startWritingAssistWorkflowTool,
 } from "@/lib/agent/tools/definitions";
 
 export function createAskAiTools() {
@@ -20,6 +22,8 @@ export function createAskAiTools() {
     getMeetingContextTool,
     startDralkWorkflowTool,
     startMeetingWorkflowTool,
+    startWritingAssistWorkflowTool,
+    startTranslationWorkflowTool,
     saveArtifactToProjectTool,
     createTodoTool,
     createCalendarEventTool,
@@ -43,4 +47,6 @@ export const ASK_AI_WRITE_TOOL_NAMES = [
 export const ASK_AI_WORKFLOW_TOOL_NAMES = [
   "start_dralk_workflow",
   "start_meeting_workflow",
+  "start_writing_assist_workflow",
+  "start_translation_workflow",
 ] as const;

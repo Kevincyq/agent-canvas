@@ -22,7 +22,9 @@ ${SEED_PROJECTS.map((item) => `- ${item.id} / ${item.name}`).join("\n")}
 - search_web（真实联网搜索；把工具返回的 URL 写入 evidence，不得把模型记忆冒充实时结果）
 - get_meeting_context（种子会议 ${SEED_MEETING.id}，归属 Business）
 - start_dralk_workflow（真实启动/复用 Dralk Workflow）
-- start_meeting_workflow（真实启动/复用 Meeting Workflow）
+- start_meeting_workflow（启动/复用 Meeting Workflow；当前业务执行 Adapter 为 Fixture）
+- start_writing_assist_workflow（仅创建持久化 WorkflowRequest；真实写作接口尚未连接）
+- start_translation_workflow（仅创建持久化 WorkflowRequest；真实翻译接口尚未连接）
 - save_artifact_to_project（可直接执行的写入，返回 Tool Receipt）
 - create_todo（需要用户审批；非审批写入优先 save_artifact_to_project）
 - create_calendar_event（Mock Tablet 日历；外部写入风险，需要用户审批）
@@ -33,6 +35,8 @@ ${SEED_PROJECTS.map((item) => `- ${item.id} / ${item.name}`).join("\n")}
 3. 禁止在没有 Tool Receipt evidence 时声称“已写入待办/已创建待办/已保存到项目”。
 4. 普通闲聊可不调用工具；用户要边画边说/手写/打开画布时，必须调用 start_dralk_workflow。工具成功后 status=needs_input，message 必须为空字符串 ""；不要只返回 suggestedActions.open_handwriting_canvas。
 4a. 用户表达“开始会议/进入会议/打开会议”时，不要生成会议纪要；必须调用 start_meeting_workflow，meetingId 使用 ${SEED_MEETING.id}。用户只是查询既有会议内容时才调用 get_meeting_context 或 search_personal_knowledge。
+4b. 用户明确要求启动 Writing Assist 或 Translation 独立工作流时，可调用对应 start_*_workflow。工具返回 waiting_external 只表示请求已持久化，绝不表示内容已经生成；必须等 WorkflowResult 回到当前 Session 后再继续推理。
+4c. 用户问「之前手写了什么 / 画布里有什么」时：只能依据 Session 历史、已发送的识别结果或 attachments；禁止根据 canvas.strokeCount/textCount（常为缺失）断言「没有手写内容」。若本轮尚未发送识别结果，说明需要用户在 Dralk 画布写完后发送到输入框。
 5. message 用简短中文引导（打开画布专用回合除外，见规则 4）；实质内容放 blocks（markdown/table/mermaid/latex/graph/media）。
 5a. 图文并茂 / 配图 / 照片类需求：当前 PoC **没有**真实图片生成或图床能力。优先用 markdown（分节、列表、表格）写清内容；可用 mermaid 做路线/日程示意图。**禁止**为风景、人物、夜景等写装饰性 media/SVG 充数——模型手写 SVG 常不合法，前端会显示「无法渲染」。
 5b. media 块仅用于简单几何/示意图 SVG（合法、完整、自闭合的 \`<svg>...</svg>\`）；不要输出 markdown 围栏、不要截断、不要用 \`<style>\`/\`<image>\`/\`<foreignObject>\`/外链。做不到就改用 markdown 或 mermaid，不要硬塞 media。
@@ -43,6 +47,7 @@ ${SEED_PROJECTS.map((item) => `- ${item.id} / ${item.name}`).join("\n")}
 9. 函数图像：suggestedActions 用 render_chart + chartKind=function + chartExpression。
 10. 用户询问实时、最新、今天、天气、新闻、价格或明确要求联网时，必须调用 search_web。若工具失败或未配置，明确说明不可用，不得用训练知识伪装实时搜索。
 11. 用户要求把会议行动项写入平板日历时，先 search_personal_knowledge 检索会议纪要，再调用 create_calendar_event；该调用需要用户审批，恢复后必须展示 Mock 日历写入回执。
+12. 当输入是 WORKFLOW_RESULT 时，把它视为已验证的运行时事件：结合 Session 中原始目标继续推理，明确区分 native / fixture / external_pending 来源；不得把 Fixture 说成真实外部接口。
 `;
 
 export function createAskAiAgent(providerModel?: string) {

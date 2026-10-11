@@ -4,6 +4,7 @@ import {
   RunContext,
   setTracingDisabled,
   type AgentInputItem,
+  type RunStreamEvent,
   type Session,
   type RunToolApprovalItem,
 } from "@openai/agents";
@@ -11,6 +12,7 @@ import {
 import { getAskAiAgent } from "@/lib/agent/ask-ai-agent";
 import { extractApprovalCallId, riskLevelForTool } from "@/lib/agent/approvals";
 import type { AgentContext } from "@/lib/agent/context";
+import { parsePartialJson } from "@/lib/agent/partial-json";
 import { applyProviderConfig } from "@/lib/agent/provider";
 import {
   createRunAbortSignal,
@@ -34,6 +36,10 @@ import {
   type ApprovalRecord,
 } from "@/lib/db/repositories/approvals";
 import type { AgentRequest, AgentResponse } from "@/types/agent";
+import {
+  STREAMING_BLOCK_ID_PREFIX,
+  type AgentRuntimeEventSink,
+} from "@/types/agent-stream";
 
 /** Soft cap for Session history sent to the model (current turn always kept). */
 const MAX_SESSION_HISTORY_CHARS = 80_000;
@@ -132,10 +138,30 @@ export function resetSharedRunnerForTests() {
 }
 
 export function buildCurrentTurnPrompt(request: AgentRequest): string {
+  const canvas =
+    request.canvas == null
+      ? null
+      : request.canvas.host === "fluxink_widget" ||
+          ((request.canvas.strokeCount ?? 0) === 0 &&
+            (request.canvas.textCount ?? 0) === 0 &&
+            request.canvas.isOpen)
+        ? {
+            isOpen: request.canvas.isOpen,
+            host: request.canvas.host ?? "fluxink_widget",
+            note: "FluxInk strokes are not visible to AskAI until the user sends recognized text from the canvas. Do not infer empty handwriting from missing stroke counts. For prior handwriting, use Session history and attachments.",
+          }
+        : {
+            isOpen: request.canvas.isOpen,
+            strokeCount: request.canvas.strokeCount ?? 0,
+            textCount: request.canvas.textCount ?? 0,
+            selectedElementId: request.canvas.selectedElementId ?? null,
+            host: request.canvas.host ?? "local_canvas",
+          };
+
   return JSON.stringify({
     task: "Answer via structured output. Use Session history for follow-ups; do not expect recentHistory.",
     userMessage: truncateText(request.message, MAX_ATTACHMENT_CONTENT_CHARS * 4),
-    canvas: request.canvas ?? null,
+    canvas,
     attachments: request.attachments.map((attachment) => ({
       id: attachment.id,
       name: attachment.name,
@@ -267,6 +293,113 @@ async function finalizeResult(
   };
 }
 
+type StreamedTurn = AsyncIterable<RunStreamEvent> & {
+  completed: Promise<void>;
+  finalOutput?: unknown;
+  interruptions?: RunToolApprovalItem[];
+  state: RunState<AgentContext, ReturnType<typeof getAskAiAgent>>;
+};
+
+type DrainedRun = {
+  finalOutput?: unknown;
+  interruptions: RunToolApprovalItem[];
+  state: RunState<AgentContext, ReturnType<typeof getAskAiAgent>>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Forward prose that is safe to show half-written. Markdown degrades gracefully
+ * mid-token, while a truncated table, mermaid or latex source would render as
+ * broken output, so those stay gated on `block.completed`.
+ */
+function emitMarkdownBlockDeltas(
+  blocks: unknown,
+  emittedBlockChars: Map<string, number>,
+  onEvent: AgentRuntimeEventSink,
+): void {
+  if (!Array.isArray(blocks)) {
+    return;
+  }
+
+  blocks.forEach((block, index) => {
+    if (!isRecord(block) || block.type !== "markdown") {
+      return;
+    }
+
+    const source = block.source;
+    if (typeof source !== "string") {
+      return;
+    }
+
+    // Key on position: the block's own id is still streaming and would churn.
+    const blockId = `${STREAMING_BLOCK_ID_PREFIX}${index}`;
+    const sent = emittedBlockChars.get(blockId) ?? 0;
+    if (source.length <= sent) {
+      return;
+    }
+
+    onEvent({
+      type: "block.delta",
+      blockId,
+      title: typeof block.title === "string" ? block.title : undefined,
+      delta: source.slice(sent),
+    });
+    emittedBlockChars.set(blockId, source.length);
+  });
+}
+
+/**
+ * Drain a streamed run, forwarding answer text as the model produces it.
+ * Raw deltas are fragments of a single structured-output JSON document, so the
+ * buffer is re-parsed tolerantly on each chunk; charts and typed diagrams stay
+ * gated on a complete object and are emitted after the run finishes.
+ */
+async function drainStreamedRun(
+  stream: StreamedTurn,
+  onEvent?: AgentRuntimeEventSink,
+): Promise<DrainedRun> {
+  let jsonBuffer = "";
+  let emittedMessageChars = 0;
+  const emittedBlockChars = new Map<string, number>();
+
+  for await (const event of stream) {
+    if (
+      event.type !== "raw_model_stream_event" ||
+      event.data.type !== "output_text_delta"
+    ) {
+      continue;
+    }
+
+    jsonBuffer += event.data.delta;
+    if (!onEvent) {
+      continue;
+    }
+
+    const draft = parsePartialJson(jsonBuffer);
+    if (!isRecord(draft)) {
+      continue;
+    }
+
+    if (typeof draft.message === "string" && draft.message.length > emittedMessageChars) {
+      onEvent({ type: "answer.delta", delta: draft.message.slice(emittedMessageChars) });
+      emittedMessageChars = draft.message.length;
+    }
+
+    emitMarkdownBlockDeltas(draft.blocks, emittedBlockChars, onEvent);
+  }
+
+  await stream.completed;
+
+  return {
+    finalOutput: stream.finalOutput,
+    interruptions: stream.interruptions ?? [],
+    state: stream.state,
+  };
+}
+
 export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnResult> {
   const provider = applyProviderConfig();
   const limits = getAgentRuntimeLimits();
@@ -291,7 +424,7 @@ export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnRe
   const agent = getAskAiAgent();
 
   try {
-    const result = await runner.run(agent, input.prompt, {
+    const stream = await runner.run(agent, input.prompt, {
       context: input.context,
       session: input.session,
       sessionInputCallback: trimSessionInputForModel,
@@ -301,14 +434,11 @@ export async function runAskAiTurn(input: RunnerTurnInput): Promise<RunnerTurnRe
         maxFunctionToolConcurrency: limits.maxFunctionToolConcurrency,
         preApprovalInputGuardrails: true,
       },
+      stream: true,
     });
 
     return finalizeResult(
-      {
-        finalOutput: result.finalOutput,
-        interruptions: result.interruptions ?? [],
-        state: result.state,
-      },
+      await drainStreamedRun(stream, input.context.onRuntimeEvent),
       input,
     );
   } catch (error) {
@@ -390,7 +520,7 @@ export async function resumeAskAiRun(input: {
   // Persist approved/rejected state before resume in case process dies mid-run.
   updateRunStateJson(runStateRecord.id, state.toString());
 
-  const result = await runner.run(agent, state, {
+  const stream = await runner.run(agent, state, {
     context: input.context,
     session: input.session,
     signal: createRunAbortSignal(input.signal, limits.timeoutMs),
@@ -398,14 +528,11 @@ export async function resumeAskAiRun(input: {
       maxFunctionToolConcurrency: limits.maxFunctionToolConcurrency,
       preApprovalInputGuardrails: true,
     },
+    stream: true,
   });
 
   return finalizeResult(
-    {
-      finalOutput: result.finalOutput,
-      interruptions: result.interruptions ?? [],
-      state: result.state,
-    },
+    await drainStreamedRun(stream, input.context.onRuntimeEvent),
     { context: input.context, request: input.request },
     runStateRecord.id,
   );

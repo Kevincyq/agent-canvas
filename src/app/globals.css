@@ -1141,84 +1141,6 @@ a {
   flex-shrink: 0;
 }
 
-.composer-toolbar {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.composer-tool-btn {
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 650;
-  min-height: 36px;
-  min-width: 64px;
-  padding: 0 14px;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease;
-}
-
-.composer-dralk-btn {
-  background: var(--accent-soft);
-  border: 1px solid rgba(13, 115, 119, 0.22);
-  color: var(--accent-strong);
-}
-
-.composer-dralk-btn:hover:not(:disabled) {
-  background: rgba(13, 115, 119, 0.16);
-  border-color: rgba(13, 115, 119, 0.35);
-  color: var(--accent-strong);
-}
-
-.composer-dralk-btn:disabled,
-.composer-meeting-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.composer-meeting-btn {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--ink);
-}
-
-.composer-meeting-btn:hover:not(:disabled) {
-  background: rgba(20, 33, 43, 0.04);
-  border-color: rgba(20, 33, 43, 0.22);
-}
-
-/* Demo-only affordance: look available, but do not accept clicks. */
-.composer-meeting-btn.is-display-only:disabled {
-  cursor: default;
-  opacity: 1;
-  pointer-events: none;
-}
-
-.composer-dralk-cancel {
-  background: transparent;
-  border: 1px solid rgba(180, 35, 24, 0.28);
-  color: var(--danger);
-}
-
-.composer-dralk-cancel:hover:not(:disabled) {
-  background: rgba(180, 35, 24, 0.06);
-}
-
-.composer-dralk-cancel:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.composer-workflow-status {
-  color: var(--muted);
-  font-size: 12px;
-  margin-left: 2px;
-}
-
 .meeting-workflow-card {
   background: rgba(13, 115, 119, 0.06);
   border: 1px solid rgba(13, 115, 119, 0.18);
@@ -3093,16 +3015,6 @@ html.tablet-device .canvas-inline {
 
   .composer {
     padding: 12px 16px calc(12px + var(--safe-area-bottom));
-  }
-
-  .composer-toolbar {
-    gap: 10px;
-  }
-
-  .composer-tool-btn {
-    min-height: 40px;
-    min-width: 72px;
-    padding: 0 16px;
   }
 
   .composer-input textarea {

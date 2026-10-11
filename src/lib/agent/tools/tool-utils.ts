@@ -9,6 +9,22 @@ import {
 import { withToolRunLogging } from "@/lib/db/repositories/tool-runs";
 import { createFailedToolReceipt } from "@/types/tool-receipt";
 import type { ToolReceipt } from "@/types/tool-receipt";
+import type { ConnectorId } from "@/types/tool-gateway";
+
+const TOOL_CONNECTOR: Record<AskAiToolName, ConnectorId> = {
+  get_current_context: "runtime",
+  get_project_context: "pkb",
+  search_personal_knowledge: "pkb",
+  search_web: "web_search",
+  get_meeting_context: "meeting",
+  start_dralk_workflow: "workflow",
+  start_meeting_workflow: "workflow",
+  start_writing_assist_workflow: "workflow",
+  start_translation_workflow: "workflow",
+  save_artifact_to_project: "artifact",
+  create_todo: "todo",
+  create_calendar_event: "calendar",
+};
 
 export function getAgentContext(
   runContext?: RunContext<AgentContext>,
@@ -65,7 +81,33 @@ export async function executeLoggedTool<T>(
         );
       }
 
-      return execute(context);
+      context.onRuntimeEvent?.({
+        type: "tool.started",
+        requestId: context.requestId,
+        toolName,
+        connectorId: TOOL_CONNECTOR[toolName],
+      });
+
+      try {
+        const receipt = await execute(context);
+        context.onRuntimeEvent?.({
+          type: "tool.completed",
+          requestId: context.requestId,
+          toolName,
+          connectorId: TOOL_CONNECTOR[toolName],
+          ok: receipt.ok,
+        });
+        return receipt;
+      } catch (error) {
+        context.onRuntimeEvent?.({
+          type: "tool.completed",
+          requestId: context.requestId,
+          toolName,
+          connectorId: TOOL_CONNECTOR[toolName],
+          ok: false,
+        });
+        throw error;
+      }
     },
   );
 }

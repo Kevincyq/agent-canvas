@@ -38,6 +38,20 @@ function mapRow(row: WorkflowRow): DralkWorkflowRecord {
   };
 }
 
+function toRuntimeStatus(status: DralkWorkflowStatus): string {
+  if (status === "completed" || status === "failed" || status === "cancelled") {
+    return status;
+  }
+  if (
+    status === "waiting_for_input" ||
+    status === "capturing" ||
+    status === "recognized"
+  ) {
+    return "waiting_for_input";
+  }
+  return "running";
+}
+
 export function getWorkflowById(id: string): DralkWorkflowRecord | null {
   const row = getDb()
     .prepare("SELECT * FROM workflow_states WHERE id = ? AND workflow_type = 'dralk_input'")
@@ -82,8 +96,10 @@ export function insertDralkWorkflow(input: {
   getDb()
     .prepare(
       `INSERT INTO workflow_states (
-        id, conversation_id, workflow_type, status, payload_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        id, conversation_id, workflow_type, status, payload_json,
+        execution_mode, runtime_status, version, input_json, resume_policy,
+        correlation_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'native', ?, '1.0', ?, 'ui_submit', ?, ?, ?)`,
     )
     .run(
       record.id,
@@ -91,6 +107,14 @@ export function insertDralkWorkflow(input: {
       record.workflowType,
       record.status,
       JSON.stringify(record.payload),
+      toRuntimeStatus(record.status),
+      JSON.stringify({
+        prompt: record.payload.prompt,
+        mode: record.payload.mode,
+        language: record.payload.language,
+        forceNew: record.payload.forceNew,
+      }),
+      record.id,
       record.createdAt,
       record.updatedAt,
     );
@@ -120,12 +144,17 @@ export function updateDralkWorkflow(
   getDb()
     .prepare(
       `UPDATE workflow_states
-       SET status = ?, payload_json = ?, updated_at = ?
+       SET status = ?, runtime_status = ?, payload_json = ?,
+           completed_at = CASE WHEN ? IN ('completed', 'failed', 'cancelled') THEN ? ELSE completed_at END,
+           updated_at = ?
        WHERE id = ?`,
     )
     .run(
       updated.status,
+      toRuntimeStatus(updated.status),
       JSON.stringify(updated.payload),
+      updated.status,
+      updated.updatedAt,
       updated.updatedAt,
       updated.id,
     );

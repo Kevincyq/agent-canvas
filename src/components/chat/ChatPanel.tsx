@@ -21,6 +21,7 @@ import type { MeetingWorkflowRecord } from "@/types/meeting-workflow";
 type ChatPanelProps = {
   messages: ChatMessage[];
   busy: boolean;
+  runProgress?: string | null;
   canvasAfterMessageId?: string | null;
   canvasSlot?: ReactNode;
   draft: string;
@@ -32,8 +33,6 @@ type ChatPanelProps = {
   onToggleNav?: () => void;
   onDraftChange: (draft: string) => void;
   onSend: (message: string) => Promise<void>;
-  onStartDralk?: () => Promise<void>;
-  onStartMeeting?: () => Promise<void>;
   onFinishMeeting?: () => Promise<void>;
   onWriteMeetingCalendar?: () => Promise<void>;
   onCreateDocument: (sourceMessageId: string, title: string, blocks: ContentBlock[]) => void;
@@ -80,9 +79,13 @@ function isCanvasOpenStub(message: ChatMessage): boolean {
   return /手写画布|Dralk 手写|准备打开|已打开 Dralk|打开手写/.test(text);
 }
 
+/** Within this distance of the bottom the view keeps following new output. */
+const BOTTOM_STICK_THRESHOLD_PX = 64;
+
 export function ChatPanel({
   messages,
   busy,
+  runProgress = null,
   canvasAfterMessageId,
   canvasSlot,
   draft,
@@ -94,8 +97,6 @@ export function ChatPanel({
   onToggleNav,
   onDraftChange,
   onSend,
-  onStartDralk,
-  onStartMeeting,
   onFinishMeeting,
   onWriteMeetingCalendar,
   onCreateDocument,
@@ -103,12 +104,54 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !busy, [busy, draft]);
   const shouldRenderFallbackCanvas = Boolean(
     canvasSlot && canvasAfterMessageId && !messages.some((message) => message.id === canvasAfterMessageId),
   );
+
+  /**
+   * Follow streaming output, but stop following once the user scrolls up to
+   * read earlier content. A DOM observer is used instead of a `messages`
+   * effect so that height changes landing after commit — mermaid, charts,
+   * editors — also keep the view pinned.
+   */
+  useEffect(() => {
+    const list = messageListRef.current;
+
+    if (!list) {
+      return;
+    }
+
+    const scrollToBottom = () => {
+      if (!stickToBottomRef.current) {
+        return;
+      }
+      // `instant` overrides the list's CSS smooth scrolling, which restarts on
+      // every delta and never catches up while text is streaming.
+      list.scrollTo({ top: list.scrollHeight, behavior: "instant" });
+    };
+
+    scrollToBottom();
+
+    const observer = new MutationObserver(scrollToBottom);
+    observer.observe(list, { childList: true, subtree: true, characterData: true });
+
+    return () => observer.disconnect();
+  }, []);
+
+  function handleMessageListScroll() {
+    const list = messageListRef.current;
+
+    if (!list) {
+      return;
+    }
+
+    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    stickToBottomRef.current = distanceFromBottom <= BOTTOM_STICK_THRESHOLD_PX;
+  }
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -119,6 +162,7 @@ export function ChatPanel({
 
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    stickToBottomRef.current = true;
     window.requestAnimationFrame(() => {
       messageListRef.current?.scrollTo({
         top: messageListRef.current.scrollHeight,
@@ -137,6 +181,9 @@ export function ChatPanel({
 
     const message = draft.trim();
     onDraftChange("");
+    // Sending is an explicit request to see the answer, so re-follow the tail
+    // even if the user had scrolled up while reading.
+    stickToBottomRef.current = true;
     await onSend(message);
   }
 
@@ -183,15 +230,15 @@ export function ChatPanel({
         <div
           className="status-chip"
           data-state={busy ? "busy" : "ready"}
-          aria-label={busy ? "运行中" : "就绪"}
-          title={busy ? "运行中" : "就绪"}
+          aria-label={busy ? runProgress || "运行中" : "就绪"}
+          title={busy ? runProgress || "运行中" : "就绪"}
         >
           <span className={busy ? "status-dot busy" : "status-dot"} />
-          {busy ? "思考中" : "就绪"}
+          {busy ? runProgress || "思考中" : "就绪"}
         </div>
       </div>
 
-      <div ref={messageListRef} className="message-list">
+      <div ref={messageListRef} className="message-list" onScroll={handleMessageListScroll}>
         {messages.map((message) => (
           <Fragment key={message.id}>
             {message.id === "welcome" ? (
@@ -289,33 +336,11 @@ export function ChatPanel({
       ) : null}
 
       <form className="composer" onSubmit={handleSubmit}>
-        <div className="composer-toolbar">
-          <button
-            type="button"
-            className="composer-tool-btn composer-dralk-btn"
-            disabled={busy || !onStartDralk}
-            title="打开 Dralk 手写画布"
-            onClick={() => {
-              void onStartDralk?.();
-            }}
-          >
-            Dralk
-          </button>
-          <button
-            type="button"
-            className="composer-tool-btn composer-meeting-btn is-display-only"
-            disabled
-            aria-disabled="true"
-            title="演示入口：示意可通过会议打开上下文（暂未启用）"
-          >
-            会议
-          </button>
-        </div>
         <div className="composer-input">
           <textarea
             ref={textareaRef}
             value={draft}
-            placeholder="向 AskAI 提问，或先用 Dralk 输入..."
+            placeholder="向 AskAI 提问..."
             rows={2}
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {

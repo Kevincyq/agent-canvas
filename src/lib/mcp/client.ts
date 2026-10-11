@@ -65,10 +65,54 @@ const DEFAULT_MCP_URL =
 let sharedMcpServer: ConnectableMcpServer | null = null;
 let sharedMcpConnectPromise: Promise<ConnectableMcpServer> | null = null;
 
-function isMcpSessionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+const TRANSPORT_ERROR_CODES = new Set([
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+]);
+
+/** `fetch failed` hides the real reason in `cause`; walk the chain before classifying. */
+function describeMcpError(error: unknown): { message: string; code?: string } {
+  const parts: string[] = [];
+  let code: string | undefined;
+  let current: unknown = error;
+
+  for (let depth = 0; current && depth < 5; depth += 1) {
+    if (current instanceof Error) {
+      parts.push(current.message);
+      const candidate = (current as { code?: unknown }).code;
+      if (!code && typeof candidate === "string") {
+        code = candidate;
+      }
+      current = (current as { cause?: unknown }).cause;
+      continue;
+    }
+    parts.push(String(current));
+    break;
+  }
+
+  return { message: parts.join(" | "), code };
+}
+
+function isTransportError(error: unknown): boolean {
+  const { message, code } = describeMcpError(error);
 
   return (
+    (code !== undefined && TRANSPORT_ERROR_CODES.has(code)) ||
+    message.includes("fetch failed") ||
+    message.includes("Connect Timeout")
+  );
+}
+
+function isMcpSessionError(error: unknown): boolean {
+  const { message } = describeMcpError(error);
+
+  return (
+    isTransportError(error) ||
     message.includes("timed out") ||
     message.includes("-32001") ||
     message.includes("not connected") ||
@@ -107,7 +151,13 @@ async function getSharedMcpServer(): Promise<ConnectableMcpServer> {
 }
 
 function formatMcpError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
+  const { message } = describeMcpError(error);
+
+  if (isTransportError(error)) {
+    return new Error(
+      `无法连接 FluxInk MCP（${getMcpServerUrl()}）。请检查本机网络/代理是否可直连该域名，再重试。原始错误：${message}`,
+    );
+  }
 
   if (message.includes("timed out") || message.includes("-32001")) {
     return new Error(
@@ -160,9 +210,9 @@ export function getMcpServerUrl(): string {
 }
 
 export function createStreamableHttpMcpServer(): ConnectableMcpServer {
-  const timeoutMs = getNumberEnv("MCP_TIMEOUT_MS", 60000);
+  const timeoutMs = getNumberEnv("MCP_TIMEOUT_MS", 120_000);
   const clientSessionTimeoutSeconds = Math.max(
-    15,
+    30,
     Math.ceil(timeoutMs / 1000),
   );
 
@@ -190,10 +240,10 @@ async function createSseMcpServer(): Promise<ConnectableMcpServer | null> {
     url: getMcpServerUrl(),
     name: `${getOptionalEnv("MCP_SERVER_NAME", "FluxInk MCP")} SSE`,
     cacheToolsList: true,
-    timeout: getNumberEnv("MCP_TIMEOUT_MS", 60000),
+    timeout: getNumberEnv("MCP_TIMEOUT_MS", 120_000),
     clientSessionTimeoutSeconds: Math.max(
-      15,
-      Math.ceil(getNumberEnv("MCP_TIMEOUT_MS", 60000) / 1000),
+      30,
+      Math.ceil(getNumberEnv("MCP_TIMEOUT_MS", 120_000) / 1000),
     ),
     requestInit: createRequestInit(),
   }) as ConnectableMcpServer;

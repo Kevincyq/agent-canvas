@@ -414,53 +414,79 @@ export function FluxInkWidgetHost({
         };
 
         bridge.oncalltool = async (params) => {
-          const proxied = await proxyHostJsonRpc("tools/call", params);
+          try {
+            const proxied = await proxyHostJsonRpc("tools/call", params);
 
-          if (!proxied.ok) {
+            if (!proxied.ok) {
+              propsRef.current.onRecognitionChange({
+                text: "",
+                status: "error",
+                error: formatWidgetHostError(proxied.message),
+              });
+              return asCallToolError(formatWidgetHostError(proxied.message));
+            }
+
+            const toolResult = asCallToolResult(proxied.result, params.name);
+            deliverRecognizedText(
+              extractRecognitionText(toolResult.structuredContent ?? proxied.result) ?? "",
+            );
+
+            return toolResult;
+          } catch (error) {
+            const message = formatWidgetHostError(
+              error instanceof Error ? error.message : "FluxInk 工具调用失败",
+            );
             propsRef.current.onRecognitionChange({
               text: "",
               status: "error",
-              error: formatWidgetHostError(proxied.message),
+              error: message,
             });
-            return asCallToolError(formatWidgetHostError(proxied.message));
+            return asCallToolError(message);
           }
-
-          const toolResult = asCallToolResult(proxied.result, params.name);
-          deliverRecognizedText(
-            extractRecognitionText(toolResult.structuredContent ?? proxied.result) ?? "",
-          );
-
-          return toolResult;
         };
 
         bridge.onreadresource = async (params) => {
-          const proxied = await proxyHostJsonRpc("resources/read", params);
+          try {
+            const proxied = await proxyHostJsonRpc("resources/read", params);
 
-          if (!proxied.ok) {
-            return asCallToolError(proxied.message);
+            if (!proxied.ok) {
+              return asCallToolError(proxied.message);
+            }
+
+            return proxied.result;
+          } catch (error) {
+            return asCallToolError(
+              error instanceof Error ? error.message : "读取 FluxInk 资源失败",
+            );
           }
-
-          return proxied.result;
         };
 
         bridge.onlistresources = async () => {
-          const proxied = await proxyHostJsonRpc("resources/list");
+          try {
+            const proxied = await proxyHostJsonRpc("resources/list");
 
-          if (!proxied.ok) {
+            if (!proxied.ok) {
+              return { resources: [] };
+            }
+
+            return proxied.result;
+          } catch {
             return { resources: [] };
           }
-
-          return proxied.result;
         };
 
         bridge.onlisttools = async () => {
-          const proxied = await proxyHostJsonRpc("tools/list");
+          try {
+            const proxied = await proxyHostJsonRpc("tools/list");
 
-          if (!proxied.ok) {
+            if (!proxied.ok) {
+              return { tools: [] };
+            }
+
+            return proxied.result;
+          } catch {
             return { tools: [] };
           }
-
-          return proxied.result;
         };
 
         bridge.addEventListener?.("initialized", () => {
