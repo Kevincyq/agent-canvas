@@ -142,6 +142,8 @@ PKB 不是 Workflow。未来接真实灵感空间时，替换 `search_personal_k
 
 ## 技术栈
 
+- Node.js `>=22`
+- pnpm（锁文件 `pnpm-lock.yaml`）
 - Next.js 16 + React 19 + TypeScript
 - OpenAI Agents JS `@openai/agents@0.13.2`（`openai-agents-js/` 仅作参考 checkout）
 - Turing OpenAI-compatible 代理，默认模型 `turing/gpt-5.5`
@@ -188,13 +190,15 @@ docs/DEPLOYMENT.md
 CanvasAgentApp
   → POST /api/agent/run（浏览器 Accept: text/event-stream）
       → Tool Gateway 调 Connector（搜索 / PKB / 工作流 / …）
-      → SSE：run.started → tool.started/completed
-             → answer.delta / block.delta（正文与 markdown 逐字流式）
-             → answer.message + 完整 block/chart（权威值，覆盖流式累积）→ done
-      → 表格 / mermaid / latex / 图表只在收到完整对象后渲染，不做半截渲染
+      → SSE：run.started → tool.started / tool.completed
+             → answer.delta / block.delta（只流式 message 和 markdown block）
+             → answer.message、block.completed、chart.completed、svg.completed
+               （权威完整对象，覆盖流式累积）→ done
+             → 失败时为 error
+      → 表格 / mermaid / latex / graph / media / 图表 / SVG 只在收到完整对象后渲染
   → eval / 脚本不带 SSE Accept 时仍返回一整包 JSON
 
-旧的 `POST /api/agent` 一次性意图路由已经删除。客户端必须带 `conversationId` 走 Session。
+旧的 `POST /api/agent` 一次性意图路由已经删除。续聊带已有 `conversationId`；省略时服务端新建会话，并在响应里返回 id。传入未知 id 会失败。`POST /api/agent/resume` 必须带已有 `conversationId`。
 
 Dralk 画布
   → /api/mcp/ui-resource + /api/mcp/host
@@ -258,6 +262,14 @@ Agent 与会话：
 - `GET /api/mcp/inspect`、`GET /api/health`
 - `POST /api/admin/reset-mock`：重置 seed Collection / 会议 Fixture
 
+观测：
+
+- `GET /api/metrics/tools`：工具成功次数与延迟
+- `GET /api/audit`：脱敏后的审计事件
+- `GET /api/eval/fixtures`：P0 eval fixture
+
+仍挂载、当前 UI 不走的旧路由：`POST /api/mcp/hwr/open`、`POST /api/mcp/hwr/recognize`。FluxInk widget 识别走同源 `POST /api/hwr/recognize`。
+
 ## 交互约定
 
 - 画布嵌在触发它的对话位置，而不是独立工作区；默认 inline，可在 widget 内全屏。
@@ -266,7 +278,7 @@ Agent 与会话：
 - 助手一轮答复是一张文档卡片：导语 + blocks + 图表叠在同一卡片内；网页/PKB 链接只在底部「来源」。
 - 编辑答复只能「另存为新笔记」，不会改写 Session 里那条原答复。
 - 左侧导航是 Collection / 任务。顶栏「新任务」创建未归属对话；Collection 行内 `+` 在该 Collection 下建任务。
-- 种子 Collection 为 Business / Technology / Study / Life / Art，供检索演示；重置：`npm run reset:mock`。
+- 种子 Collection 为 Business / Technology / Study / Life / Art，供检索演示；重置：`pnpm run reset:mock`。
 
 ## FluxInk 边界
 
@@ -297,18 +309,20 @@ Agent 与会话：
 
 ## 本地开发
 
+需要 Node.js `>=22`。依赖以 `pnpm-lock.yaml` 为准：
+
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 常用检查（按需手动执行，本仓库约定不自动编译/构建）：
 
 ```bash
-npm run typecheck
-npm run reset:mock
-npm run eval:p05:workflow
-npm run eval:p0:live
+pnpm run typecheck
+pnpm run reset:mock
+pnpm run eval:p05:workflow
+pnpm run eval:p0:live
 ```
 
 `eval:p0:live` 和 `eval:p05:workflow` 会打真实模型，需要有效的 `.env.local`。
@@ -322,7 +336,7 @@ npm run eval:p0:live
 
 ```bash
 cp deploy/deploy.env.example deploy/deploy.env   # 首次
-npm run deploy:staging
+pnpm run deploy:staging
 ```
 
 流程：`rsync` 当前工作区 → 上传 `.env.local` 为服务器 `.env` → 远端 `docker build` + `docker compose up` → Nginx HTTPS。预发发布不依赖 GitHub push。详情见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。

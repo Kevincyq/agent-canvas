@@ -45,10 +45,12 @@ Before doing any substantive work in this workspace:
 
 ## Local Commands
 
-- `npm install`: install app dependencies.
-- `npm run dev`: start Next.js development server.
-- `npm run typecheck`: run TypeScript checking.
-- `npm run build`: build the app.
+Requires Node.js `>=22`. Install from `pnpm-lock.yaml`.
+
+- `pnpm install`: install app dependencies.
+- `pnpm run dev`: start Next.js development server.
+- `pnpm run typecheck`: run TypeScript checking.
+- `pnpm run build`: build the app.
 
 ## Engineering Guidelines
 

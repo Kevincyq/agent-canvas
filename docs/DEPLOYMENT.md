@@ -1,14 +1,14 @@
 # Agent Canvas 预发环境部署指南
 
-GitLab 仅作**代码仓库**；因公司网络策略不允许 GitLab 与外部预发服务器互通，**不使用 GitLab CI/CD 自动部署**。
+版本管理在私有 GitHub：`https://github.com/Kevincyq/agent-canvas`，当前分支 `feature/askai-agent-runtime`。不再向公司 GitLab 推送。
 
-预发发布改为：**本地一键脚本 → rsync 代码 → 服务器 docker build/up**。
+预发发布不走 Git 远程：**本地一键脚本 → rsync 当前工作区 → 服务器 docker build/up**。GitHub push 不是发布前提。
 
 ## 架构概览
 
 ```text
 本地开发验证
-  → git push GitLab（版本管理）
+  → git push origin（仅版本管理，可选）
   → pnpm run deploy:staging（本地执行）
   → rsync 代码到预发服务器
   → 上传 .env.local 为服务器 .env
@@ -23,7 +23,7 @@ GitLab 仅作**代码仓库**；因公司网络策略不允许 GitLab 与外部�
 | 公网地址 | `https://dralk-demo.tcljd.com` |
 | 服务器 | `ubuntu@39.107.230.27` |
 | 部署目录 | `/home/ubuntu/agent_canvas` |
-| GitLab | `https://eaglelab-gitlab.tcljd.com/yangqin.chen/agent_canvas` |
+| Git | `https://github.com/Kevincyq/agent-canvas`（`origin`，分支 `feature/askai-agent-runtime`） |
 
 ## 一次性准备
 
@@ -64,10 +64,8 @@ cp deploy/deploy.env.example deploy/deploy.env
 # 1. 本地验证
 pnpm run dev
 
-# 2. 提交并推送到 GitLab（仅版本管理）
-git add .
-git commit -m "your message"
-git push origin feature/mcp-app-widget-host
+# 2. 需要留版本时再推 GitHub（发布本身不依赖这一步）
+git push origin feature/askai-agent-runtime
 
 # 3. 本地一键部署到预发
 pnpm run deploy:staging
